@@ -50,6 +50,10 @@ async function api(chemin, options = {}) {
     body: options.body ? JSON.stringify(options.body) : undefined,
   });
   const data = await res.json().catch(() => ({}));
+  if (res.status === 401 && !chemin.startsWith("/auth") && !chemin.startsWith("/admin")) {
+    etat.moi.profil = null; // session expirée : retour à l'écran de connexion
+    if (location.hash !== "#/") location.hash = "#/";
+  }
   if (!res.ok) throw new Error(data.erreur || "Erreur " + res.status);
   return data;
 }
@@ -166,13 +170,15 @@ const visuelHTML = (svg, alt) => svg && /^<svg[\s>]/i.test(svg)
   ? `<div class="visuel"><img alt="${esc(alt)}" src="data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}"></div>` : "";
 
 // ================= État =================
-const etat = { status: { ia: false, adresses: [] }, ecoles: null, profil: null, quiz: null };
+const etat = { status: { ia: false, adresses: [] }, moi: { profil: null, admin: false, adminConfigure: false }, mobile: false, ecoles: null, profil: null, quiz: null };
 async function chargerEcoles() {
   if (!etat.ecoles) etat.ecoles = await fetch("ecoles.json").then((r) => r.json()).catch(() => []);
   return etat.ecoles;
 }
 const bandeauDemo = () => etat.status.ia ? "" :
-  `<div class="demo-bandeau">MODE DÉMO — questions d'exemple seulement. Ajoute une clé API dans <a href="#/parametres">⚙️ Paramètres</a> pour que Sensei cherche sur internet et crée des tests sur mesure.</div>`;
+  `<div class="demo-bandeau">MODE DÉMO — questions d'exemple seulement. ${etat.moi.admin
+    ? `Ajoute une clé API dans <a href="#/parametres">🔑 Paramètres</a>`
+    : `L'admin doit ajouter une clé API (<a href="#/admin">🛡 Admin</a> → Clé API)`} pour que Sensei cherche sur internet et crée des tests sur mesure.</div>`;
 
 // ================= Synchro avec le téléphone (côté ordinateur) =================
 const sync = {
@@ -248,36 +254,76 @@ function lancerMinuteur(dureeMs, auBout) {
 const resteMs = () => (minuteur ? Math.max(0, minuteur.fin - Date.now()) : null);
 
 // ================= Routeur =================
+// [motif, écran, accès] — accès : "libre", "compte" (élève connecté ou admin), "admin"
 const routes = [
-  [/^#?\/?$/, ecranAccueil],
-  [/^#\/nouveau$/, () => ecranFormulaire(null)],
-  [/^#\/profil\/(\w+)$/, ecranProfil],
-  [/^#\/profil\/(\w+)\/modifier$/, async (id) => ecranFormulaire(await api("/profils/" + id))],
-  [/^#\/profil\/(\w+)\/reglages$/, ecranReglages],
-  [/^#\/profil\/(\w+)\/revision$/, ecranRevision],
-  [/^#\/profil\/(\w+)\/final$/, ecranFinal],
-  [/^#\/profil\/(\w+)\/devoirs$/, ecranDevoirs],
-  [/^#\/tel\/(\d+)$/, ecranTelephone],
-  [/^#\/parametres$/, ecranParametres],
+  [/^#?\/?$/, ecranAccueil, "libre"],
+  [/^#\/inscription$/, () => ecranFormulaire(null), "libre"],
+  [/^#\/code$/, ecranCode, "libre"],
+  [/^#\/tel\/(\d+)$/, ecranTelephone, "libre"],
+  [/^#\/admin$/, ecranAdmin, "libre"],
+  [/^#\/admin\/compte\/(\w+)$/, ecranAdminCompte, "admin"],
+  [/^#\/parametres$/, ecranParametres, "admin"],
+  [/^#\/progres$/, () => ecranMobileOnglet("progres"), "compte"],
+  [/^#\/photos$/, () => ecranMobileOnglet("photos"), "compte"],
+  [/^#\/profil\/(\w+)$/, ecranProfil, "compte"],
+  [/^#\/profil\/(\w+)\/modifier$/, async (id) => ecranFormulaire(await api("/profils/" + id)), "compte"],
+  [/^#\/profil\/(\w+)\/reglages$/, ecranReglages, "compte"],
+  [/^#\/profil\/(\w+)\/revision$/, ecranRevision, "compte"],
+  [/^#\/profil\/(\w+)\/final$/, ecranFinal, "compte"],
+  [/^#\/profil\/(\w+)\/devoirs$/, ecranDevoirs, "compte"],
 ];
 async function router() {
   const h = location.hash || "#/";
   window.scrollTo(0, 0);
   arreterMinuteur();
   quitterTelephone();
+  fermerDico();
   if ("speechSynthesis" in window) speechSynthesis.cancel();
   sync.surAction = null;
   sync.envoyer({ phase: "attente" });
-  for (const [re, fn] of routes) {
+  majEntete();
+  for (const [re, fn, acces] of routes) {
     const m = h.match(re);
-    if (m) {
-      try { await fn(...m.slice(1)); } catch (e) { console.error(e); finChargement(); app.innerHTML = `<div class="panel">${senseiDit("Oups ! " + esc(e.message), "triste")}<a class="btn" href="#/">Retour</a></div>`; }
-      return;
-    }
+    if (!m) continue;
+    if (acces === "compte" && !etat.moi.profil && !etat.moi.admin) { location.hash = "#/"; return; }
+    if (acces === "admin" && !etat.moi.admin) { location.hash = "#/admin"; return; }
+    try { await fn(...m.slice(1)); } catch (e) { console.error(e); finChargement(); app.innerHTML = `<div class="panel">${senseiDit("Oups ! " + esc(e.message), "triste")}<a class="btn" href="#/">Retour</a></div>`; }
+    majEntete();
+    return;
   }
   location.hash = "#/";
 }
 window.addEventListener("hashchange", router);
+
+// ================= En-tête et barre d'onglets (mobile) =================
+function majEntete() {
+  const moi = etat.moi, p = moi.profil, h = location.hash || "#/";
+  const tel = document.body.classList.contains("mode-tel");
+  const anglais = p && (/angl/i.test(p.matiere || "") || /angl/i.test(etat.quiz?.matiere || ""));
+  $("#nav-compte").innerHTML = `
+    ${anglais && !tel ? `<button type="button" class="btn-dico" id="btn-dico" title="Dictionnaire anglais → français">📖 Dico</button>` : ""}
+    ${p ? `<a href="#/" class="chip-compte" title="Mon profil"><span class="mini-av">${avatarSVG(p.avatar)}</span><span class="chip-nom">${esc(p.nom)}</span></a>` : ""}
+    <a href="#/admin" class="btn-admin ${moi.admin ? "actif" : ""}" title="Espace admin">🛡${etat.mobile ? "" : " Admin"}</a>
+    ${p ? `<button type="button" class="btn-deco" id="btn-deco" title="Se déconnecter">⏻</button>` : ""}`;
+  $("#btn-deco")?.addEventListener("click", seDeconnecter);
+  $("#btn-dico")?.addEventListener("click", () => ouvrirDico());
+  const bar = $("#tabbar");
+  bar.hidden = !(etat.mobile && p && !tel);
+  document.body.classList.toggle("avec-tabbar", !bar.hidden);
+  if (!bar.hidden) {
+    const onglets = [["#/", "🏠", "Accueil"], ["#/code", "📱", "Code"], ["#/photos", "📸", "Cours"], ["#/progres", "📊", "Progrès"]];
+    const actif = onglets.find(([href]) => href !== "#/" && h.startsWith(href))?.[0] || (h === "#/" || h === "" ? "#/" : "");
+    bar.innerHTML = onglets.map(([href, ic, lib]) => `<a href="${href}" class="${href === actif ? "actif" : ""}"><span>${ic}</span>${lib}</a>`).join("");
+  }
+}
+async function seDeconnecter() {
+  if (!confirm("Se déconnecter ?")) return;
+  await api("/auth/deconnexion", { method: "POST" }).catch(() => {});
+  sync.fermer();
+  etat.moi.profil = null; etat.profil = null;
+  location.hash = "#/";
+  router();
+}
 
 // ================= Écran : accueil =================
 function panneauCodeTel() {
@@ -293,32 +339,72 @@ function panneauCodeTel() {
     </form>
   </div>`;
 }
-async function ecranAccueil() {
-  const profils = await api("/profils");
-  const mobile = estMobile();
-  app.innerHTML = `
-    ${mobile ? panneauCodeTel() : ""}
-    ${bandeauDemo()}
-    ${senseiDit(`<strong>Yo !</strong> Je suis Sensei. Choisis ton héros pour réviser, ou crée un nouveau profil !`)}
-    <h1>Choisis ton héros</h1>
-    <div class="grille">
-      ${profils.map((p, i) => `
-        <a class="panel carte-profil ${i % 2 ? "incline-d" : "incline-g"}" href="#/profil/${p.id}">
-          <div class="portrait">${avatarSVG(p.avatar)}</div>
-          <div class="nom">${esc(p.nom)}</div>
-          <div>${esc(p.annee || "")}</div>
-          <div class="aide">${esc(p.ecole || "")}</div>
-          <div><span class="badge revision">${p.revisions || 0} révision${(p.revisions || 0) > 1 ? "s" : ""}</span></div>
-        </a>`).join("")}
-      <a class="panel carte-profil carte-nouveau" href="#/nouveau"><div class="plus">+</div><div class="nom">Nouveau profil</div></a>
-    </div>
-    ${mobile ? "" : `<div style="margin-top:30px">${panneauCodeTel()}</div>`}`;
-  $("#form-code").addEventListener("submit", (e) => {
+function brancherCodeTel() {
+  $("#form-code")?.addEventListener("submit", (e) => {
     e.preventDefault();
     const c = $("#code-tel").value.replace(/\D/g, "");
     if (c.length !== 4) return toast("Le code contient 4 chiffres.", true);
     location.hash = "#/tel/" + c;
   });
+}
+
+async function ecranAccueil() {
+  if (!etat.moi.profil) return ecranConnexion();
+  if (etat.mobile) return ecranMobileOnglet("accueil");
+  return ecranProfil(etat.moi.profil.id);
+}
+
+function ecranConnexion() {
+  const formConnexion = `
+    <form id="form-connexion" autocomplete="on">
+      <label for="c-id">Identifiant</label>
+      <input id="c-id" name="identifiant" autocomplete="username" autocapitalize="none" required>
+      <label for="c-mdp">Mot de passe</label>
+      <input id="c-mdp" name="motDePasse" type="password" autocomplete="current-password" required>
+      <div class="actions"><button class="btn rouge">Se connecter ⚡</button></div>
+    </form>`;
+  if (etat.mobile) {
+    // Version mobile : une seule colonne, le mode télécommande en premier.
+    app.innerHTML = `
+      <div class="mobile-hero">${senseiDit("<strong>Yo !</strong> Connecte-toi pour réviser, ou entre le code de l'ordinateur pour utiliser ton téléphone comme télécommande.")}</div>
+      ${panneauCodeTel()}
+      <div class="panel"><span class="etiquette">CONNEXION</span>${formConnexion}</div>
+      <a class="btn blanc large" href="#/inscription">✨ Créer mon compte</a>`;
+  } else {
+    app.innerHTML = `
+      ${senseiDit("<strong>Yo !</strong> Je suis Sensei. Connecte-toi à ton compte ou crée-le pour commencer à réviser !")}
+      <div class="deux">
+        <div class="panel incline-g"><span class="etiquette">CONNEXION</span><h2>Bon retour, héros !</h2>${formConnexion}</div>
+        <div class="panel jaune incline-d"><span class="etiquette">NOUVEAU ?</span>
+          <h2>Crée ton compte</h2>
+          <p>Ton compte garde ton profil, tes résultats, le nombre de tes révisions et tes photos de cours.</p>
+          <ul class="liste-manga"><li>Fiches de révision et tests sur mesure</li><li>Ton téléphone devient une télécommande</li><li>Aide aux devoirs avec photo</li></ul>
+          <div class="actions"><a class="btn rouge" href="#/inscription">✨ Créer mon compte</a></div>
+        </div>
+      </div>
+      <div class="panel noir"><span class="etiquette">📱 SUR TON TÉLÉPHONE</span>
+        <p>Ouvre <strong style="color:var(--jaune)">${esc(etat.status.adresses[0] || location.origin)}</strong> sur ton téléphone (même Wi-Fi). Après t'être connecté ici, clique sur « Connecter mon téléphone » dans ton profil pour obtenir le code.</p>
+      </div>`;
+  }
+  brancherCodeTel();
+  $("#form-connexion").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      const r = await api("/auth/connexion", { method: "POST", body: Object.fromEntries(new FormData(e.target)) });
+      etat.moi.profil = r.profil;
+      toast("Bienvenue, " + r.profil.nom + " !");
+      router();
+    } catch (err) { toast(err.message, true); }
+  });
+}
+
+// Mobile : saisie du code donné par l'ordinateur.
+function ecranCode() {
+  app.innerHTML = `
+    ${senseiDit("Sur l'ordinateur, ouvre ton profil et clique sur <strong>« Connecter mon téléphone »</strong>. Entre ici le code à 4 chiffres affiché.")}
+    ${panneauCodeTel()}`;
+  brancherCodeTel();
+  $("#code-tel").focus();
 }
 
 // ================= Liste déroulante avec recherche (écoles, sujets) =================
@@ -362,8 +448,17 @@ async function ecranFormulaire(p) {
   const v = p || { nom: "", ecole: "", ville: "", annee: "1re secondaire", avatar: "pics-0" };
   app.innerHTML = `
     <div class="panel">
-      <span class="etiquette">${p ? "MODIFIER LE PROFIL" : "NOUVEAU HÉROS"}</span>
+      <span class="etiquette">${p ? "MODIFIER LE PROFIL" : "CRÉER MON COMPTE"}</span>
       <form id="form-profil" autocomplete="off">
+        ${p ? "" : `
+        <h3>1. Ton compte</h3>
+        <div class="mission">
+          <div><label for="f-id">Identifiant *</label><input id="f-id" name="identifiant" required minlength="3" maxlength="30" pattern="[A-Za-z0-9._\\-]+" autocapitalize="none" autocomplete="username" placeholder="ex. lea.tremblay"></div>
+          <div><label for="f-mdp">Mot de passe * (6 caractères min.)</label><input id="f-mdp" name="motDePasse" type="password" required minlength="6" autocomplete="new-password"></div>
+        </div>
+        <label for="f-mdp2">Confirme le mot de passe *</label>
+        <input id="f-mdp2" type="password" required minlength="6" autocomplete="new-password">
+        <h3 style="margin-top:18px">2. Ton profil</h3>`}
         <label>Choisis ton avatar</label>
         <div class="avatars" id="avatars"></div>
         <label for="f-nom">Nom ou surnom *</label>
@@ -379,9 +474,9 @@ async function ecranFormulaire(p) {
         <select id="f-annee" name="annee">${ANNEES.map((a) => `<option ${a === v.annee ? "selected" : ""}>${a}</option>`).join("")}</select>
         ${p ? "" : `<p class="aide" style="margin-top:12px">Tu choisiras ta matière et ton sujet à réviser juste après !</p>`}
         <div class="actions">
-          <button class="btn rouge" type="submit">${p ? "Enregistrer" : "Créer mon profil !"}</button>
-          <a class="btn blanc" href="${p ? "#/profil/" + p.id : "#/"}">Annuler</a>
-          ${p ? `<button class="btn blanc" type="button" id="suppr">🗑 Supprimer</button>` : ""}
+          <button class="btn rouge" type="submit">${p ? "Enregistrer" : "Créer mon compte !"}</button>
+          <a class="btn blanc" href="#/">Annuler</a>
+          ${p ? `<button class="btn blanc" type="button" id="suppr">🗑 Supprimer ${etat.moi.profil?.id === p.id ? "mon compte" : "ce compte"}</button>` : ""}
         </div>
       </form>
     </div>`;
@@ -418,17 +513,28 @@ async function ecranFormulaire(p) {
     e.preventDefault();
     const d = Object.fromEntries(new FormData(e.target));
     d.avatar = avatar;
+    if (!p && d.motDePasse !== $("#f-mdp2").value) return toast("Les deux mots de passe ne sont pas pareils.", true);
     try {
-      const r = p ? await api("/profils/" + p.id, { method: "PUT", body: d }) : await api("/profils", { method: "POST", body: d });
-      toast(p ? "Profil mis à jour !" : "Bienvenue, " + r.nom + " ! Choisis ta mission.");
-      location.hash = "#/profil/" + r.id;
+      if (p) {
+        const r = await api("/profils/" + p.id, { method: "PUT", body: d });
+        if (etat.moi.profil?.id === r.id) etat.moi.profil = r;
+        toast("Profil mis à jour !");
+        location.hash = etat.moi.profil?.id === r.id ? "#/" : "#/admin/compte/" + r.id;
+      } else {
+        const r = await api("/auth/inscription", { method: "POST", body: d });
+        etat.moi.profil = r.profil;
+        toast("Bienvenue, " + r.profil.nom + " ! Choisis ta mission.");
+        location.hash = "#/";
+        router();
+      }
     } catch (err) { toast(err.message, true); }
   });
   if (p) $("#suppr").addEventListener("click", async () => {
-    if (!confirm(`Supprimer le profil de ${p.nom} et tous ses résultats ?`)) return;
+    if (!confirm(`Supprimer le compte de ${p.nom} et tous ses résultats ? C'est définitif.`)) return;
     if (sync.profilId === p.id) sync.fermer();
     await api("/profils/" + p.id, { method: "DELETE" });
-    location.hash = "#/";
+    if (etat.moi.profil?.id === p.id) { etat.moi.profil = null; location.hash = "#/"; }
+    else location.hash = "#/admin";
   });
 }
 
@@ -456,34 +562,35 @@ function resumeReglages(r) {
   return `${r.minuteur ? `⏱ ${r.secondesChoix} s (choix) / ${r.secondesOuvertes} s (ouvertes)` : "⏱ sans minuteur"} · ${r.nbRevision} questions en révision · ${r.nbFinal} au test final · ${r.pctQcm} % QCM / ${100 - r.pctQcm} % ouvertes`;
 }
 
-async function ecranProfil(id) {
-  const p = await api("/profils/" + id);
-  etat.profil = p;
-  if (sync.profilId && sync.profilId !== p.id) sync.fermer();
-  await reprendreSync(p);
+// --- Sections du profil, réutilisées par l'écran web, les onglets mobiles et la vue admin ---
+function statsProfil(p) {
   const finals = p.sessions.filter((s) => s.type === "final");
-  const moy = finals.length ? Math.round(finals.reduce((a, s) => a + s.pourcentage, 0) / finals.length) : null;
-  const meilleur = finals.length ? Math.max(...finals.map((s) => s.pourcentage)) : null;
-  const matieres = matieresPour(p.annee);
-  const listeM = p.matiere && !matieres.includes(p.matiere) ? [p.matiere, ...matieres] : matieres;
-  const reg = reglagesDe(p);
-
-  app.innerHTML = `
-    ${bandeauDemo()}
+  return {
+    finals,
+    moy: finals.length ? Math.round(finals.reduce((a, s) => a + s.pourcentage, 0) / finals.length) : null,
+    meilleur: finals.length ? Math.max(...finals.map((s) => s.pourcentage)) : null,
+  };
+}
+const S = {
+  entete: (p, { lectureSeule = false } = {}) => `
     <div class="panel trame">
       <div class="entete-profil">
         <div class="portrait">${avatarSVG(p.avatar)}</div>
-        <div style="flex:1;min-width:200px">
+        <div style="flex:1;min-width:180px">
           <h1>${esc(p.nom)}</h1>
           <div><strong>${esc(p.annee)}</strong>${p.ecole ? " · " + esc(p.ecole) : ""}${p.ville ? " (" + esc(p.ville) + ")" : ""}</div>
+          ${p.identifiant ? `<div class="aide">@${esc(p.identifiant)}</div>` : ""}
         </div>
-        <div class="actions" style="margin:0">
+        ${lectureSeule ? "" : `<div class="actions" style="margin:0">
           <a class="btn blanc petit" href="#/profil/${p.id}/modifier">✏️ Modifier</a>
           <a class="btn blanc petit" href="#/profil/${p.id}/reglages">⚙️ Réglages</a>
-        </div>
+        </div>`}
       </div>
-    </div>
-
+    </div>`,
+  mission: (p) => {
+    const matieres = matieresPour(p.annee);
+    const listeM = p.matiere && !matieres.includes(p.matiere) ? [p.matiere, ...matieres] : matieres;
+    return `
     <div class="panel jaune">
       <span class="etiquette">TA MISSION</span>
       ${p.matiere && p.sujet ? "" : senseiDit("Choisis ta <strong>matière</strong> puis le <strong>sujet</strong> à réviser pour débloquer les boutons !")}
@@ -503,95 +610,106 @@ async function ecranProfil(id) {
         <button class="btn bleu" data-go="final">⚔️ Test final</button>
         <button class="btn blanc" data-go="devoirs">✍️ Aide aux devoirs</button>
       </div>
-      <p class="aide" style="color:#111">${esc(resumeReglages(reg))} — <a href="#/profil/${p.id}/reglages">modifier</a></p>
-    </div>
-
-    <div class="panel noir">
-      <span class="etiquette">📱 TÉLÉCOMMANDE</span>
-      <div id="zone-sync"></div>
-    </div>
-
-    <div class="stats panel">
+      <p class="aide" style="color:#111">${esc(resumeReglages(reglagesDe(p)))} — <a href="#/profil/${p.id}/reglages">modifier</a></p>
+    </div>`;
+  },
+  sync: () => `<div class="panel noir"><span class="etiquette">📱 TÉLÉCOMMANDE</span><div id="zone-sync"></div></div>`,
+  lienCode: () => `<a class="panel noir carte-lien" href="#/code"><span class="etiquette">📱 TÉLÉCOMMANDE</span>
+    <strong style="color:var(--jaune)">Entrer le code de l'ordinateur ▶</strong><br><span class="aide" style="color:#ccc">Pour répondre au test depuis ton téléphone.</span></a>`,
+  stats: (p) => {
+    const { finals, moy, meilleur } = statsProfil(p);
+    return `<div class="stats panel">
       <span class="etiquette">STATS DU HÉROS</span>
       <div class="stat rev"><div class="val">${p.revisions || 0}</div><div class="lib">révisions faites</div></div>
       <div class="stat"><div class="val">${finals.length}</div><div class="lib">tests finals</div></div>
       <div class="stat"><div class="val">${moy == null ? "–" : moy + "%"}</div><div class="lib">moyenne aux tests</div></div>
       <div class="stat"><div class="val">${meilleur == null ? "–" : rang(meilleur)}</div><div class="lib">meilleur rang${meilleur == null ? "" : ` (${meilleur}%)`}</div></div>
-    </div>
-
-    <div class="panel">
-      <span class="etiquette">PROGRESSION</span>
-      ${graphique(p.sessions)}
-      ${p.sessions.length ? `<div class="table-scroll"><table class="historique">
+    </div>`;
+  },
+  progression: (p) => {
+    const hist = [...p.sessions].reverse().slice(0, 25);
+    const lignes = etat.mobile
+      ? `<div class="liste-sessions">${hist.map((s) => `<div class="carte-session"><span class="badge ${s.type}">${s.type === "final" ? "Test final" : "Révision"}</span>
+          <strong class="pct">${s.pourcentage}%</strong><div>${esc(s.sujet)}</div><div class="aide">${esc(s.matiere)} · ${fmtDate(s.date)} · ${s.score}/${s.total}</div></div>`).join("")}</div>`
+      : `<div class="table-scroll"><table class="historique">
         <thead><tr><th>Date</th><th>Type</th><th>Matière</th><th>Sujet</th><th>Résultat</th></tr></thead>
-        <tbody>${[...p.sessions].reverse().slice(0, 25).map((s) => `<tr>
+        <tbody>${hist.map((s) => `<tr>
           <td>${fmtDate(s.date)}</td>
           <td><span class="badge ${s.type}">${s.type === "final" ? "Test final" : "Révision"}</span></td>
           <td>${esc(s.matiere)}</td><td>${esc(s.sujet)}</td>
-          <td><strong>${s.pourcentage}%</strong> (${s.score}/${s.total})</td></tr>`).join("")}</tbody></table></div>` : ""}
-    </div>
-
+          <td><strong>${s.pourcentage}%</strong> (${s.score}/${s.total})</td></tr>`).join("")}</tbody></table></div>`;
+    return `<div class="panel"><span class="etiquette">PROGRESSION</span>${graphique(p.sessions)}${p.sessions.length ? lignes : ""}</div>`;
+  },
+  photos: (p, { lectureSeule = false } = {}) => `
     <div class="panel">
-      <span class="etiquette">MES PHOTOS DE COURS</span>
-      <p>Ajoute des photos de tes notes de cours, de tes exercices ou de tes anciens examens. Sensei les lit pour créer des questions qui ressemblent à celles de ton prof !</p>
+      <span class="etiquette">${lectureSeule ? "PHOTOS DE COURS" : "MES PHOTOS DE COURS"}</span>
+      ${lectureSeule ? "" : `<p>Ajoute des photos de tes notes de cours, de tes exercices ou de tes anciens examens. Sensei les lit pour créer des questions qui ressemblent à celles de ton prof !</p>
+      ${p.matiere ? "" : `<p class="aide">Choisis d'abord ta matière dans ta mission pour classer les photos.</p>`}
       <label class="zone-upload" for="photo-input" style="cursor:pointer">
-        📸 <strong>Prendre ou choisir des photos</strong><br><span class="aide">Elles seront classées dans la matière et le sujet de ta mission.</span>
+        📸 <strong>${etat.mobile ? "Prendre une photo ou choisir" : "Prendre ou choisir des photos"}</strong><br><span class="aide">Classées dans : ${esc(p.matiere || "—")}${p.sujet ? " · " + esc(p.sujet) : ""}</span>
       </label>
-      <input type="file" id="photo-input" accept="image/*" multiple hidden>
+      <input type="file" id="photo-input" accept="image/*" multiple hidden>`}
       <div class="galerie" id="galerie">
         ${p.photos.length ? [...p.photos].reverse().map((ph) => `
           <div class="photo">
             <img src="/photos/${esc(ph.fichier)}" alt="Photo de cours" data-desc="${esc(ph.description || "")}" loading="lazy">
-            <button class="suppr" data-suppr="${ph.id}" title="Supprimer">×</button>
+            ${lectureSeule ? "" : `<button class="suppr" data-suppr="${ph.id}" title="Supprimer">×</button>`}
             <div class="leg"><strong>${esc(ph.matiere)}</strong>${ph.sujet ? " · " + esc(ph.sujet) : ""}<br>${ph.description ? "✅ analysée" : etat.status.ia ? "⚠️ non analysée" : "mode démo"}</div>
           </div>`).join("") : `<p class="vide">Aucune photo pour l'instant.</p>`}
       </div>
-    </div>`;
+    </div>`,
+};
 
-  // --- Mission : matière puis sujet ---
+// Branche les événements des sections présentes à l'écran.
+function brancherProfil(p, recharger) {
   const selM = $("#m-matiere"), inS = $("#m-sujet");
+  const sauverMission = async () => {
+    if (!selM) return;
+    const r = await api("/profils/" + p.id, { method: "PUT", body: { matiere: selM.value, sujet: inS.value.trim() } });
+    Object.assign(p, r);
+    if (etat.moi.profil?.id === p.id) { etat.moi.profil = r; majEntete(); } // affiche le Dico si la matière devient l'anglais
+    majMission();
+  };
   const majMission = () => {
+    if (!selM) return;
     const ok = !!(selM.value && inS.value.trim());
     app.querySelectorAll("[data-go]").forEach((b) => (b.disabled = b.dataset.go === "devoirs" ? !selM.value : !ok));
     inS.disabled = !selM.value;
     $("#m-sujet-btn").disabled = !selM.value;
     $("#revs-sujet").textContent = p.sessions.filter((s) => s.type === "revision" && s.matiere === selM.value && s.sujet === inS.value.trim()).length;
   };
-  const sauverMission = async () => {
-    const r = await api("/profils/" + p.id, { method: "PUT", body: { matiere: selM.value, sujet: inS.value.trim() } });
-    Object.assign(p, r);
+  if (selM) {
+    brancherCombo(inS, $("#m-sujet-liste"), {
+      toutSiVide: true,
+      bouton: $("#m-sujet-btn"),
+      source: async (texte) => {
+        const tous = sujetsPour(selM.value);
+        const t = sansAccents(texte);
+        return t ? tous.filter((s) => sansAccents(s).includes(t)) : tous;
+      },
+      rendu: (s) => esc(s),
+      choisir: (s) => { inS.value = s; sauverMission(); },
+    });
+    selM.addEventListener("change", () => { inS.value = ""; sauverMission(); if (selM.value) inS.focus(); });
+    inS.addEventListener("input", majMission);
+    inS.addEventListener("change", sauverMission);
     majMission();
-  };
-  brancherCombo(inS, $("#m-sujet-liste"), {
-    toutSiVide: true,
-    bouton: $("#m-sujet-btn"),
-    source: async (texte) => {
-      const tous = sujetsPour(selM.value);
-      const t = sansAccents(texte);
-      return t ? tous.filter((s) => sansAccents(s).includes(t)) : tous;
-    },
-    rendu: (s) => esc(s),
-    choisir: (s) => { inS.value = s; sauverMission(); },
-  });
-  selM.addEventListener("change", () => { inS.value = ""; sauverMission(); if (selM.value) inS.focus(); });
-  inS.addEventListener("input", majMission);
-  inS.addEventListener("change", sauverMission);
-  majMission();
+    app.querySelectorAll("[data-go]").forEach((b) => b.addEventListener("click", async () => {
+      await sauverMission();
+      location.hash = `#/profil/${p.id}/${b.dataset.go}`;
+    }));
+  }
 
-  app.querySelectorAll("[data-go]").forEach((b) => b.addEventListener("click", async () => {
-    await sauverMission();
-    location.hash = `#/profil/${p.id}/${b.dataset.go}`;
-  }));
-
-  // --- Télécommande ---
+  // Télécommande (ordinateur)
+  const z = $("#zone-sync");
   const dessinerSync = () => {
-    const z = $("#zone-sync");
+    if (!z) return;
     if (sync.code && sync.profilId === p.id) {
       z.innerHTML = `
         <div class="sync-actif">
           <div><div class="aide" style="color:#ddd">CODE</div><div class="gros-code">${esc(sync.code)}</div></div>
           <div style="flex:1;min-width:220px">
-            <p>Sur le téléphone, ouvre <strong style="color:var(--jaune)">${esc(etat.status.adresses[0] || location.origin)}</strong>, puis entre ce code dans « Mode télécommande ».</p>
+            <p>Sur le téléphone, ouvre <strong style="color:var(--jaune)">${esc(etat.status.adresses[0] || location.origin)}</strong>, puis entre ce code (onglet 📱 Code, ou « Mode télécommande » sur l'écran de connexion).</p>
             <p data-sync-statut></p>
             <button class="btn blanc petit" id="sync-off">Déconnecter</button>
           </div>
@@ -608,29 +726,30 @@ async function ecranProfil(id) {
   };
   dessinerSync();
 
-  // --- Photos ---
-  $("#photo-input").addEventListener("change", async (e) => {
+  // Photos
+  $("#photo-input")?.addEventListener("change", async (e) => {
     const files = [...e.target.files];
     if (!files.length) return;
-    if (!selM.value) { toast("Choisis d'abord ta matière pour classer les photos.", true); e.target.value = ""; return; }
+    const matiere = selM?.value || p.matiere;
+    if (!matiere) { toast("Choisis d'abord ta matière pour classer les photos.", true); e.target.value = ""; return; }
     await sauverMission();
     chargement("Sensei lit tes photos !", ["Il déchiffre l'écriture de ton prof…", "Il repère les notions importantes…", `Photo(s) : ${files.length}`]);
     try {
       for (const f of files) {
         const image = await lirePhoto(f);
-        await api(`/profils/${p.id}/photos`, { method: "POST", body: { image, matiere: selM.value, sujet: inS.value } });
+        await api(`/profils/${p.id}/photos`, { method: "POST", body: { image, matiere, sujet: inS?.value ?? p.sujet } });
       }
       toast(files.length > 1 ? "Photos ajoutées !" : "Photo ajoutée !");
     } catch (err) { toast(err.message, true); }
     finChargement();
-    ecranProfil(p.id);
+    recharger();
   });
-  $("#galerie").addEventListener("click", async (e) => {
+  $("#galerie")?.addEventListener("click", async (e) => {
     const s = e.target.closest("[data-suppr]");
     if (s) {
       if (!confirm("Supprimer cette photo ?")) return;
       await api(`/profils/${p.id}/photos/${s.dataset.suppr}`, { method: "DELETE" });
-      return ecranProfil(p.id);
+      return recharger();
     }
     const img = e.target.closest("img");
     if (img) {
@@ -639,6 +758,38 @@ async function ecranProfil(id) {
     }
   });
 }
+
+async function chargerProfil(id) {
+  const p = await api("/profils/" + id);
+  etat.profil = p;
+  if (etat.moi.profil?.id === p.id) etat.moi.profil = p;
+  if (sync.profilId && sync.profilId !== p.id) sync.fermer();
+  return p;
+}
+
+// Version web : tout le tableau de bord sur une page.
+async function ecranProfil(id) {
+  if (etat.mobile && etat.moi.profil?.id === id) return ecranMobileOnglet("accueil");
+  const p = await chargerProfil(id);
+  await reprendreSync(p);
+  app.innerHTML = bandeauDemo() + S.entete(p) + S.mission(p) + S.sync() + S.stats(p) + S.progression(p) + S.photos(p);
+  brancherProfil(p, () => ecranProfil(id));
+}
+
+// Version mobile : un onglet à la fois (barre en bas de l'écran).
+async function ecranMobileOnglet(onglet) {
+  if (!etat.moi.profil) return ecranConnexion();
+  const p = await chargerProfil(etat.moi.profil.id);
+  const vues = {
+    accueil: () => `<div class="bonjour"><div class="mini-portrait">${avatarSVG(p.avatar)}</div><div><div class="aide">Salut,</div><h2 style="margin:0">${esc(p.nom)} !</h2></div></div>`
+      + bandeauDemo() + S.mission(p) + S.lienCode() + S.stats(p),
+    progres: () => S.stats(p) + S.progression(p) + `<div class="actions"><a class="btn blanc" href="#/profil/${p.id}/modifier">✏️ Modifier mon profil</a><a class="btn blanc" href="#/profil/${p.id}/reglages">⚙️ Réglages</a></div>`,
+    photos: () => S.photos(p),
+  };
+  app.innerHTML = (vues[onglet] || vues.accueil)();
+  brancherProfil(p, () => ecranMobileOnglet(onglet));
+}
+
 
 // ================= Écran : réglages du test =================
 async function ecranReglages(id) {
@@ -1197,13 +1348,219 @@ function rendreTelQuestion(zone, e) {
   }
 }
 
+// ================= Dictionnaire anglais → français (pop-up) =================
+function lireRecents() { try { return JSON.parse(localStorage.getItem("dicoRecents") || "[]"); } catch { return []; } }
+function ajouterRecents(mots) {
+  const liste = [...new Set([...mots, ...lireRecents()])].slice(0, 12);
+  try { localStorage.setItem("dicoRecents", JSON.stringify(liste)); } catch {}
+}
+function carteDico(e) {
+  const puces = (liste, cls) => liste.map((s) => `<button type="button" class="puce ${cls}" ${cls === "en" ? `data-chercher="${esc(s)}"` : ""}>${esc(s)}</button>`).join("");
+  return `<div class="carte-dico">
+    <div class="dico-tete">
+      <h3>${esc(e.mot)}</h3>
+      <button type="button" class="btn-son" data-dire="${esc(e.mot)}" data-langue="en" title="Écouter">🔊</button>
+      ${e.phonetique ? `<span class="aide">${esc(e.phonetique)}</span>` : ""}
+      ${e.nature ? `<span class="badge revision">${esc(e.nature)}</span>` : ""}
+    </div>
+    <p class="dico-trad">→ ${e.traductions.map((t, i) => i ? esc(t) : `<strong>${esc(t)}</strong>`).join(", ")}</p>
+    ${e.exemple_en ? `<div class="exemple">
+      <div>🇬🇧 <em>${esc(e.exemple_en)}</em> <button type="button" class="btn-son petit" data-dire="${esc(e.exemple_en)}" data-langue="en" title="Écouter l'exemple">🔊</button></div>
+      <div>🇫🇷 ${esc(e.exemple_fr)}</div></div>` : ""}
+    ${e.synonymes_en.length ? `<div class="dico-syn"><span class="aide">Synonymes anglais :</span> ${puces(e.synonymes_en, "en")}</div>` : ""}
+    ${e.synonymes_fr.length ? `<div class="dico-syn"><span class="aide">Synonymes français :</span> ${puces(e.synonymes_fr, "fr")}</div>` : ""}
+  </div>`;
+}
+function ouvrirDico(texteInitial = "") {
+  fermerDico();
+  const fond = document.createElement("div");
+  fond.className = "modal-fond";
+  fond.id = "dico";
+  fond.innerHTML = `
+    <div class="modal panel" role="dialog" aria-modal="true" aria-labelledby="dico-titre">
+      <span class="etiquette">📖 DICO</span>
+      <button type="button" class="modal-fermer" id="dico-fermer" aria-label="Fermer">✕</button>
+      <h2 id="dico-titre">Anglais → français</h2>
+      <textarea id="dico-texte" rows="3" placeholder="Colle ou écris des mots anglais (un par ligne ou séparés par des virgules)…"></textarea>
+      <div class="actions" style="margin-top:10px"><button type="button" class="btn rouge" id="dico-go">🔎 Traduire</button></div>
+      <div id="dico-recents"></div>
+      <div id="dico-res"></div>
+    </div>`;
+  document.body.appendChild(fond);
+  document.body.classList.add("modal-ouvert");
+  const champ = $("#dico-texte"), res = $("#dico-res");
+  const dessinerRecents = () => {
+    const r = lireRecents();
+    $("#dico-recents").innerHTML = r.length ? `<div class="dico-syn"><span class="aide">Récents :</span> ${r.map((m) => `<button type="button" class="puce" data-chercher="${esc(m)}">${esc(m)}</button>`).join("")}</div>` : "";
+  };
+  const traduire = async () => {
+    const texte = champ.value.trim();
+    if (!texte) return champ.focus();
+    res.innerHTML = `<div class="tel-centre"><div class="sensei grand">${senseiSVG("joie")}</div><p>Sensei cherche dans son dico…</p></div>`;
+    try {
+      const r = await api("/dico", { method: "POST", body: { texte } });
+      res.innerHTML = (r.demo ? `<p class="demo-bandeau">Mode démo : mini-dictionnaire de 20 mots (happy, friend, go, homework…). Avec une clé API, tous les mots et phrases sont traduits.</p>` : "")
+        + (r.entrees.length ? r.entrees.map(carteDico).join("") : `<p class="vide">Rien à traduire.</p>`);
+      ajouterRecents(r.entrees.filter((e) => e.exemple_en).map((e) => e.mot));
+      dessinerRecents();
+    } catch (e) { res.innerHTML = `<p class="ko">${esc(e.message)}</p>`; }
+  };
+  $("#dico-go").addEventListener("click", traduire);
+  champ.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); traduire(); } });
+  champ.addEventListener("paste", () => setTimeout(traduire, 0)); // colle → traduit tout de suite
+  $("#dico-fermer").addEventListener("click", fermerDico);
+  fond.addEventListener("click", (e) => {
+    if (e.target === fond) return fermerDico();
+    const b = e.target.closest("[data-chercher]");
+    if (b) { champ.value = b.dataset.chercher; traduire(); fond.querySelector(".modal").scrollTop = 0; }
+  });
+  dessinerRecents();
+  if (texteInitial) { champ.value = texteInitial; traduire(); } else champ.focus();
+}
+function fermerDico() {
+  $("#dico")?.remove();
+  document.body.classList.remove("modal-ouvert");
+}
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && $("#dico")) fermerDico(); });
+
+// ================= Espace admin =================
+async function ecranAdmin() {
+  etat.moi = await api("/auth/moi"); // l'admin a pu être créé ou fermé depuis un autre appareil
+  majEntete();
+  if (!etat.moi.admin) {
+    const premier = !etat.moi.adminConfigure;
+    app.innerHTML = `
+      <div class="panel noir" style="max-width:520px;margin:0 auto 22px">
+        <span class="etiquette">🛡 ESPACE ADMIN</span>
+        <h2 style="color:var(--jaune)">${premier ? "Créer le compte admin" : "Connexion admin"}</h2>
+        <p>${premier ? "Première visite : choisis le mot de passe qui protégera l'espace admin (suivi de tous les comptes, clé API). Garde-le pour toi !" : "Réservé au parent ou à l'enseignant : suivi de l'avancement de tous les comptes."}</p>
+        <form id="form-admin">
+          <label for="a-email">Courriel admin</label>
+          <input id="a-email" type="email" required autocomplete="username" autocapitalize="none">
+          <label for="a-mdp">Mot de passe admin</label>
+          <input id="a-mdp" type="password" required minlength="6" autocomplete="${premier ? "new-password" : "current-password"}">
+          ${premier ? `<label for="a-mdp2">Confirme</label><input id="a-mdp2" type="password" required minlength="6" autocomplete="new-password">` : ""}
+          <div class="actions"><button class="btn">${premier ? "Créer et entrer" : "Entrer 🛡"}</button><a class="btn blanc" href="#/">Retour</a></div>
+        </form>
+      </div>`;
+    $("#form-admin").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const mdp = $("#a-mdp").value;
+      if (premier && mdp !== $("#a-mdp2").value) return toast("Les deux mots de passe ne sont pas pareils.", true);
+      try {
+        await api(premier ? "/admin/initialiser" : "/admin/connexion", { method: "POST", body: { email: $("#a-email").value, motDePasse: mdp } });
+        etat.moi.admin = true; etat.moi.adminConfigure = true;
+        router();
+      } catch (err) { toast(err.message, true); }
+    });
+    return;
+  }
+
+  const comptes = await api("/admin/comptes");
+  const total = comptes.reduce((a, c) => a + c.revisions, 0);
+  const actifs7 = comptes.filter((c) => Date.now() - new Date(c.derniereActivite) < 7 * 864e5).length;
+  const ligneRes = (c) => c.dernierResultat ? `<span class="badge ${c.dernierResultat.type}">${c.dernierResultat.type === "final" ? "Test" : "Rév."}</span> ${c.dernierResultat.pourcentage}% · ${esc(c.dernierResultat.sujet)}` : `<span class="vide">aucun</span>`;
+  app.innerHTML = `
+    <div class="panel noir">
+      <span class="etiquette">🛡 ESPACE ADMIN</span>
+      <div class="entete-profil">
+        <h1 style="color:var(--jaune);flex:1">Avancement des comptes</h1>
+        <div class="actions" style="margin:0">
+          <a class="btn petit" href="#/parametres">🔑 Clé API & réseau</a>
+          <button class="btn blanc petit" id="admin-out">Quitter l'admin</button>
+        </div>
+      </div>
+    </div>
+    <div class="stats panel">
+      <div class="stat rev"><div class="val">${comptes.length}</div><div class="lib">comptes</div></div>
+      <div class="stat"><div class="val">${actifs7}</div><div class="lib">actifs cette semaine</div></div>
+      <div class="stat"><div class="val">${total}</div><div class="lib">révisions au total</div></div>
+      <div class="stat"><div class="val">${comptes.reduce((a, c) => a + c.tests, 0)}</div><div class="lib">tests finals</div></div>
+    </div>
+    <div class="panel">
+      <span class="etiquette">TOUS LES COMPTES</span>
+      <input id="admin-filtre" placeholder="🔎 Chercher un nom, une école, une matière…" style="margin-bottom:14px">
+      ${!comptes.length ? `<p class="vide">Aucun compte pour l'instant.</p>` : etat.mobile
+        ? `<div class="liste-sessions" id="admin-liste">${comptes.map((c) => `
+            <a class="carte-session carte-compte" href="#/admin/compte/${c.id}" data-filtre="${esc(sansAccents([c.nom, c.identifiant, c.ecole, c.annee, ...c.matieres].join(" ")))}">
+              <div class="mini-portrait">${avatarSVG(c.avatar)}</div>
+              <div style="flex:1"><strong>${esc(c.nom)}</strong> <span class="aide">@${esc(c.identifiant)}</span>
+                <div class="aide">${esc(c.annee || "")}${c.ecole ? " · " + esc(c.ecole) : ""}</div>
+                <div>📖 ${c.revisions} · ⚔️ ${c.tests} · moy. ${c.moyenne == null ? "–" : c.moyenne + "%"}</div>
+                <div class="aide">${ligneRes(c)}</div></div></a>`).join("")}</div>`
+        : `<div class="table-scroll"><table class="historique admin-table" id="admin-liste">
+            <thead><tr><th></th><th>Élève</th><th>Année · école</th><th>Révisions</th><th>Tests</th><th>Moyenne</th><th>Meilleur</th><th>Dernier résultat</th><th>Activité</th></tr></thead>
+            <tbody>${comptes.map((c) => `<tr data-href="#/admin/compte/${c.id}" data-filtre="${esc(sansAccents([c.nom, c.identifiant, c.ecole, c.annee, ...c.matieres].join(" ")))}">
+              <td><div class="mini-portrait petit">${avatarSVG(c.avatar)}</div></td>
+              <td><strong>${esc(c.nom)}</strong><br><span class="aide">@${esc(c.identifiant)}</span></td>
+              <td>${esc(c.annee || "")}<br><span class="aide">${esc(c.ecole || "")}</span></td>
+              <td><strong>${c.revisions}</strong></td><td>${c.tests}</td>
+              <td>${c.moyenne == null ? "–" : `<strong class="${c.moyenne >= 60 ? "ok" : "ko"}">${c.moyenne}%</strong>`}</td>
+              <td>${c.meilleur == null ? "–" : rang(c.meilleur) + ` (${c.meilleur}%)`}</td>
+              <td>${ligneRes(c)}</td>
+              <td>${fmtDate(c.derniereActivite)}</td></tr>`).join("")}</tbody></table></div>`}
+    </div>`;
+  $("#admin-out").addEventListener("click", async () => { await api("/admin/deconnexion", { method: "POST" }); etat.moi.admin = false; location.hash = "#/"; });
+  app.querySelectorAll("tr[data-href]").forEach((tr) => tr.addEventListener("click", () => (location.hash = tr.dataset.href)));
+  $("#admin-filtre").addEventListener("input", (e) => {
+    const t = sansAccents(e.target.value.trim());
+    app.querySelectorAll("[data-filtre]").forEach((el) => (el.style.display = !t || el.dataset.filtre.includes(t) ? "" : "none"));
+  });
+}
+
+async function ecranAdminCompte(id) {
+  const p = await api("/admin/comptes/" + id);
+  const parMatiere = {};
+  for (const s of p.sessions) {
+    const m = (parMatiere[s.matiere] ||= { revisions: 0, finals: [], sujets: new Set() });
+    if (s.type === "revision") m.revisions++; else m.finals.push(s.pourcentage);
+    m.sujets.add(s.sujet);
+  }
+  app.innerHTML = `
+    <div class="actions" style="margin:0 0 16px"><a class="btn blanc petit" href="#/admin">◀ Tous les comptes</a></div>
+    ${S.entete(p, { lectureSeule: true })}
+    ${S.stats(p)}
+    <div class="panel"><span class="etiquette">PAR MATIÈRE</span>
+      ${Object.keys(parMatiere).length ? `<div class="table-scroll"><table class="historique"><thead><tr><th>Matière</th><th>Révisions</th><th>Tests</th><th>Moyenne</th><th>Sujets travaillés</th></tr></thead><tbody>
+        ${Object.entries(parMatiere).map(([m, x]) => `<tr><td><strong>${esc(m)}</strong></td><td>${x.revisions}</td><td>${x.finals.length}</td>
+          <td>${x.finals.length ? Math.round(x.finals.reduce((a, b) => a + b, 0) / x.finals.length) + "%" : "–"}</td><td>${[...x.sujets].map(esc).join(", ")}</td></tr>`).join("")}
+      </tbody></table></div>` : `<p class="vide">Pas encore d'activité.</p>`}
+      <p class="aide">Compte créé le ${fmtDate(p.cree)}${p.derniereConnexion ? ` · dernière connexion le ${fmtDate(p.derniereConnexion)}` : ""} · mission actuelle : ${esc(p.matiere || "—")}${p.sujet ? " / " + esc(p.sujet) : ""}</p>
+    </div>
+    ${S.progression(p)}
+    ${S.photos(p, { lectureSeule: true })}
+    <div class="panel"><span class="etiquette">GESTION DU COMPTE</span>
+      <form id="form-reset" class="actions" style="align-items:stretch">
+        <input id="nouv-mdp" type="password" minlength="6" required placeholder="Nouveau mot de passe (6 caractères min.)" style="flex:1;min-width:200px" autocomplete="new-password">
+        <button class="btn">🔑 Réinitialiser le mot de passe</button>
+      </form>
+      <div class="actions">
+        <a class="btn blanc" href="#/profil/${p.id}/modifier">✏️ Modifier le profil</a>
+        <button class="btn rouge" id="suppr-compte">🗑 Supprimer le compte</button>
+      </div>
+    </div>`;
+  $("#form-reset").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try { await api(`/admin/comptes/${p.id}/mdp`, { method: "POST", body: { motDePasse: $("#nouv-mdp").value } }); toast("Mot de passe changé. Donne-le à " + p.nom + "."); $("#nouv-mdp").value = ""; }
+    catch (err) { toast(err.message, true); }
+  });
+  $("#suppr-compte").addEventListener("click", async () => {
+    if (!confirm(`Supprimer définitivement le compte de ${p.nom} ?`)) return;
+    await api("/profils/" + p.id, { method: "DELETE" });
+    if (etat.moi.profil?.id === p.id) etat.moi.profil = null;
+    location.hash = "#/admin";
+  });
+  $("#galerie")?.addEventListener("click", (e) => { const img = e.target.closest("img"); if (img) window.open(img.src, "_blank"); });
+}
+
 // ================= Écran : paramètres =================
 async function ecranParametres() {
   etat.status = await api("/status");
   const s = etat.status;
   app.innerHTML = `
     <div class="panel">
-      <span class="etiquette">PARAMÈTRES</span>
+      <span class="etiquette">🛡 PARAMÈTRES (ADMIN)</span>
+      <div class="actions" style="margin:0 0 12px"><a class="btn blanc petit" href="#/admin">◀ Espace admin</a></div>
       <h2>Intelligence artificielle</h2>
       <p>État : <strong>${s.ia ? "✅ activée" : "⚠️ mode démo"}</strong></p>
       ${s.cleEnv ? `<p class="aide">La clé vient de la variable d'environnement ANTHROPIC_API_KEY du serveur.</p>` : `
@@ -1229,4 +1586,10 @@ async function ecranParametres() {
 }
 
 // ================= Démarrage =================
-api("/status").then((s) => (etat.status = s)).catch(() => {}).finally(router);
+etat.mobile = estMobile();
+document.body.classList.toggle("ui-mobile", etat.mobile);
+document.body.classList.toggle("ui-web", !etat.mobile);
+Promise.all([
+  api("/status").then((s) => (etat.status = s)).catch(() => {}),
+  api("/auth/moi").then((m) => (etat.moi = m)).catch(() => {}),
+]).finally(router);

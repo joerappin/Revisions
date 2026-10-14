@@ -134,6 +134,36 @@ export function demoRevision(matiere, sujet, n = 10, pctQcm = 70) {
   return { demo: true, fiche: b.fiche, questions: selection(b.questions, n, pctQcm), sources: [{ titre: "Alloprof", url: "https://www.alloprof.qc.ca/" }] };
 }
 
+// ---------- Mini-dictionnaire du mode démo ----------
+const d = (mot, phonetique, nature, traductions, exemple_en, exemple_fr, synonymes_en, synonymes_fr) =>
+  ({ mot, phonetique, nature, traductions, exemple_en, exemple_fr, synonymes_en, synonymes_fr });
+const DICO = [
+  d("happy", "/ˈhæp.i/", "adjectif", ["heureux", "content"], "She is happy to see her friends.", "Elle est heureuse de voir ses amis.", ["glad", "joyful", "cheerful"], ["joyeux", "ravi", "content"]),
+  d("sad", "/sæd/", "adjectif", ["triste"], "He was sad after the game.", "Il était triste après la partie.", ["unhappy", "upset", "down"], ["malheureux", "peiné"]),
+  d("big", "/bɪɡ/", "adjectif", ["grand", "gros"], "They live in a big house.", "Ils habitent dans une grande maison.", ["large", "huge", "enormous"], ["énorme", "immense", "vaste"]),
+  d("small", "/smɔːl/", "adjectif", ["petit"], "I have a small dog.", "J'ai un petit chien.", ["little", "tiny"], ["minuscule", "menu"]),
+  d("fast", "/fæst/", "adjectif / adverbe", ["rapide", "vite"], "My brother runs very fast.", "Mon frère court très vite.", ["quick", "rapid", "speedy"], ["rapide", "prompt"]),
+  d("beautiful", "/ˈbjuː.tɪ.fəl/", "adjectif", ["beau", "magnifique"], "What a beautiful sunset!", "Quel beau coucher de soleil !", ["pretty", "lovely", "gorgeous"], ["joli", "superbe", "splendide"]),
+  d("friend", "/frend/", "nom", ["ami", "amie"], "My best friend lives next door.", "Mon meilleur ami habite à côté.", ["buddy", "pal", "mate"], ["copain", "camarade", "chum (Québec)"]),
+  d("school", "/skuːl/", "nom", ["école"], "We walk to school every morning.", "Nous marchons jusqu'à l'école chaque matin.", ["academy", "college"], ["établissement scolaire", "collège"]),
+  d("house", "/haʊs/", "nom", ["maison"], "Their house has a red door.", "Leur maison a une porte rouge.", ["home", "residence", "building"], ["demeure", "domicile", "logement"]),
+  d("weekend", "/ˈwiːk.end/", "nom", ["fin de semaine", "week-end"], "What did you do last weekend?", "Qu'as-tu fait la fin de semaine dernière ?", [], ["week-end"]),
+  d("homework", "/ˈhoʊm.wɝːk/", "nom", ["devoirs"], "I finished my homework before dinner.", "J'ai fini mes devoirs avant le souper.", ["assignment", "schoolwork"], ["travail", "exercices"]),
+  d("go", "/ɡoʊ/", "verbe (irrégulier : went, gone)", ["aller", "partir"], "We go to the park on Sundays.", "Nous allons au parc le dimanche.", ["move", "travel", "leave"], ["se rendre", "partir"]),
+  d("eat", "/iːt/", "verbe (irrégulier : ate, eaten)", ["manger"], "They eat lunch at noon.", "Ils mangent le dîner à midi.", ["consume", "have", "dine"], ["se nourrir", "dîner"]),
+  d("run", "/rʌn/", "verbe (irrégulier : ran, run)", ["courir"], "She runs in the park every day.", "Elle court au parc tous les jours.", ["jog", "sprint", "race"], ["galoper", "filer"]),
+  d("learn", "/lɝːn/", "verbe", ["apprendre"], "I want to learn Spanish.", "Je veux apprendre l'espagnol.", ["study", "discover", "master"], ["étudier", "découvrir"]),
+  d("understand", "/ˌʌn.dɚˈstænd/", "verbe (irrégulier : understood)", ["comprendre"], "Do you understand the question?", "Comprends-tu la question ?", ["get", "grasp", "realize"], ["saisir", "piger (familier)"]),
+  d("help", "/help/", "verbe / nom", ["aider", "aide"], "Can you help me with this exercise?", "Peux-tu m'aider avec cet exercice ?", ["assist", "support", "aid"], ["assister", "soutenir", "dépanner"]),
+  d("tired", "/taɪrd/", "adjectif", ["fatigué"], "I'm tired after the hockey practice.", "Je suis fatigué après la pratique de hockey.", ["exhausted", "sleepy", "worn out"], ["épuisé", "crevé", "brûlé (Québec)"]),
+  d("always", "/ˈɑːl.weɪz/", "adverbe", ["toujours"], "He is always late.", "Il est toujours en retard.", ["constantly", "forever", "every time"], ["constamment", "sans cesse"]),
+  d("yesterday", "/ˈjes.tɚ.deɪ/", "adverbe / nom", ["hier"], "I saw a movie yesterday.", "J'ai vu un film hier.", [], ["la veille"]),
+];
+export function demoDico(items) {
+  return items.map((mot) => DICO.find((e) => e.mot === mot.toLowerCase())
+    || d(mot, "", "—", ["(mode démo : mot absent du mini-dictionnaire)"], "", "", [], []));
+}
+
 export function demoFinal(matiere, sujet, n = 20, pctQcm = 70) {
   const b = banque(matiere);
   return { demo: true, questions: selection([...b.questions].sort(() => Math.random() - 0.5), n, pctQcm), sources: [] };

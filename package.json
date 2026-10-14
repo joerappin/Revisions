@@ -1,7 +1,7 @@
 {
-  "name": "manga-revision",
+  "name": "reviz",
   "version": "1.0.0",
-  "description": "Module de révision style manga pour élèves du Québec, accessible sur le Wi-Fi local",
+  "description": "ReviZ — module de révision style manga pour élèves du Québec, accessible sur le Wi-Fi local",
   "main": "server.js",
   "scripts": {
     "start": "node --env-file-if-exists=.env server.js"

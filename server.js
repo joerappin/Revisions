@@ -1,4 +1,4 @@
-// Manga Révision — serveur local accessible sur le même Wi-Fi.
+// ReviZ — serveur local accessible sur le même Wi-Fi.
 // Lancer : npm start   (puis ouvrir l'adresse affichée sur un autre appareil)
 import http from "node:http";
 import fs from "node:fs";
@@ -7,7 +7,7 @@ import os from "node:os";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 import Anthropic from "@anthropic-ai/sdk";
-import { demoRevision, demoFinal } from "./demo.js";
+import { demoRevision, demoFinal, demoDico } from "./demo.js";
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC = path.join(ROOT, "public");
@@ -381,6 +381,55 @@ async function analyserPhoto(p, photo) {
   saveDb();
 }
 
+// ---------- Dictionnaire anglais → français ----------
+const DICO_FILE = path.join(DATA, "dico.json");
+const dicoCache = readJSON(DICO_FILE, {});
+const ENTREE_DICO = {
+  type: "object",
+  additionalProperties: false,
+  required: ["mot", "phonetique", "nature", "traductions", "exemple_en", "exemple_fr", "synonymes_en", "synonymes_fr"],
+  properties: {
+    mot: { type: "string", description: "Le mot ou l'expression tel que saisi (corrigé s'il y avait une faute de frappe évidente)" },
+    phonetique: { type: "string", description: "Prononciation API, ex. /ˈhæp.i/ ; \"\" pour une phrase" },
+    nature: { type: "string", description: "nom, verbe, adjectif, adverbe, expression, phrase… (en français)" },
+    traductions: { type: "array", items: { type: "string" }, description: "1 à 4 traductions françaises, la plus courante en premier" },
+    exemple_en: { type: "string", description: "Phrase d'exemple simple en anglais utilisant le mot" },
+    exemple_fr: { type: "string", description: "Traduction française de l'exemple" },
+    synonymes_en: { type: "array", items: { type: "string" }, description: "2 à 5 synonymes anglais ([] pour une phrase)" },
+    synonymes_fr: { type: "array", items: { type: "string" }, description: "2 à 5 synonymes français de la traduction ([] pour une phrase)" },
+  },
+};
+const SCHEMA_DICO = { type: "object", additionalProperties: false, required: ["entrees"], properties: { entrees: { type: "array", items: ENTREE_DICO } } };
+
+function decouperDico(texte) {
+  const morceaux = String(texte || "").split(/[\n,;]+/).map((s) => s.trim().replace(/\s+/g, " ")).filter(Boolean);
+  return [...new Set(morceaux.map((s) => s.slice(0, 200)))].slice(0, 15);
+}
+async function dico(p, texte) {
+  const items = decouperDico(texte);
+  if (!items.length) return { entrees: [] };
+  if (!getClient()) return { demo: true, entrees: demoDico(items) };
+  const cle = (s) => s.toLowerCase();
+  const manquants = items.filter((s) => !dicoCache[cle(s)]);
+  if (manquants.length) {
+    const r = await ask({
+      system: SYSTEM,
+      effort: "low",
+      maxTokens: 12000,
+      schema: SCHEMA_DICO,
+      content: `Tu es un dictionnaire anglais → français pour un élève québécois de ${p?.annee || "secondaire"}.
+Pour chaque élément ci-dessous (dans le même ordre, une entrée par élément), donne : la prononciation, la nature, les traductions françaises (français du Québec quand l'usage diffère, ex. « fin de semaine »), un exemple simple en anglais et sa traduction, des synonymes anglais et français.
+Si un élément est une phrase entière, traduis la phrase au complet (nature « phrase », exemple = la phrase elle-même, synonymes vides).
+Si un élément n'est pas de l'anglais, traduis-le quand même vers le français si possible.
+
+${manquants.map((s, i) => `${i + 1}. ${s}`).join("\n")}`,
+    });
+    (r.json.entrees || []).forEach((e, i) => { if (manquants[i]) dicoCache[cle(manquants[i])] = e; });
+    writeJSON(DICO_FILE, dicoCache);
+  }
+  return { entrees: items.map((s) => dicoCache[cle(s)]).filter(Boolean) };
+}
+
 async function aideDevoirs(p, { matiere, question, image }) {
   if (!getClient()) {
     return {
@@ -436,35 +485,192 @@ function nettoyerProfil(body) {
   for (const k of champsProfil) if (k in body) out[k] = String(body[k] ?? "").slice(0, 200).trim();
   return out;
 }
-function profilPublic(p) { return { ...p, reglages: reglagesDe(p) }; }
+function profilPublic(p) {
+  const { mdp, ...reste } = p;
+  return { ...reste, reglages: reglagesDe(p) };
+}
+
+// ---------- Comptes et sessions ----------
+// Chaque profil est un compte (identifiant + mot de passe haché avec scrypt).
+// La session est un jeton aléatoire dans un cookie HttpOnly, gardé dans data/sessions.json.
+const SESSIONS_FILE = path.join(DATA, "sessions.json");
+const sessions = new Map(Object.entries(readJSON(SESSIONS_FILE, {})));
+const DUREE_SESSION = 30 * 24 * 3600e3;
+const saveSessions = () => writeJSON(SESSIONS_FILE, Object.fromEntries(sessions));
+
+function hacher(motDePasse, sel = crypto.randomBytes(16).toString("hex")) {
+  return { sel, hash: crypto.scryptSync(String(motDePasse), sel, 32).toString("hex") };
+}
+function verifier(motDePasse, stocke) {
+  if (!stocke?.sel || !stocke?.hash) return false;
+  const a = Buffer.from(hacher(motDePasse, stocke.sel).hash, "hex"), b = Buffer.from(stocke.hash, "hex");
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+function lireCookies(req) {
+  const out = {};
+  for (const morceau of String(req.headers.cookie || "").split(";")) {
+    const i = morceau.indexOf("=");
+    if (i > 0) out[morceau.slice(0, i).trim()] = decodeURIComponent(morceau.slice(i + 1).trim());
+  }
+  return out;
+}
+function sessionDe(req) {
+  const jeton = lireCookies(req).mr_session;
+  const s = jeton && sessions.get(jeton);
+  if (!s) return null;
+  if (s.exp < Date.now()) { sessions.delete(jeton); saveSessions(); return null; }
+  return { jeton, ...s };
+}
+function ouvrirSession(res, donnees, req) {
+  const existante = sessionDe(req);
+  const jeton = existante?.jeton || crypto.randomBytes(24).toString("hex");
+  sessions.set(jeton, { ...(existante || {}), ...donnees, exp: Date.now() + DUREE_SESSION });
+  delete sessions.get(jeton).jeton;
+  saveSessions();
+  res.setHeader("Set-Cookie", `mr_session=${jeton}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${DUREE_SESSION / 1000}`);
+}
+function modifierSession(req, changement) {
+  const s = sessionDe(req);
+  if (!s) return;
+  const { jeton, ...donnees } = s;
+  const nouv = { ...donnees, ...changement };
+  if (!nouv.profilId && !nouv.admin) sessions.delete(jeton); else sessions.set(jeton, nouv);
+  saveSessions();
+}
+const peutVoir = (sess, profilId) => !!sess && (sess.admin || sess.profilId === profilId);
+
+// Anti-devinette : 8 échecs en 10 minutes par adresse bloquent les connexions un moment.
+const echecs = new Map();
+function bloque(req) {
+  const e = echecs.get(req.socket.remoteAddress);
+  return !!e && e.n >= 8 && Date.now() - e.t < 10 * 60e3;
+}
+function echec(req) {
+  const ip = req.socket.remoteAddress, e = echecs.get(ip);
+  echecs.set(ip, e && Date.now() - e.t < 10 * 60e3 ? { n: e.n + 1, t: e.t } : { n: 1, t: Date.now() });
+}
+const normIdentifiant = (s) => String(s || "").trim().toLowerCase();
+
+function resumeCompte(p) {
+  const finals = p.sessions.filter((s) => s.type === "final");
+  const derniere = p.sessions[p.sessions.length - 1];
+  return {
+    id: p.id, nom: p.nom, identifiant: p.identifiant || "", avatar: p.avatar, ecole: p.ecole, ville: p.ville, annee: p.annee,
+    matiere: p.matiere, sujet: p.sujet, cree: p.cree, revisions: p.revisions || 0, tests: finals.length,
+    moyenne: finals.length ? Math.round(finals.reduce((a, s) => a + s.pourcentage, 0) / finals.length) : null,
+    meilleur: finals.length ? Math.max(...finals.map((s) => s.pourcentage)) : null,
+    dernierResultat: derniere ? { type: derniere.type, sujet: derniere.sujet, matiere: derniere.matiere, pourcentage: derniere.pourcentage, date: derniere.date } : null,
+    derniereActivite: derniere?.date || p.derniereConnexion || p.cree,
+    photos: p.photos.length,
+    matieres: [...new Set(p.sessions.map((s) => s.matiere))],
+  };
+}
+
+async function apiAuth(req, res, parts) {
+  const m = req.method;
+  if (parts[1] === "moi" && m === "GET") {
+    const s = sessionDe(req);
+    const p = s?.profilId && db.profils.find((x) => x.id === s.profilId);
+    return send(res, 200, { profil: p ? profilPublic(p) : null, admin: !!s?.admin, adminConfigure: !!config.admin });
+  }
+  if (parts[1] === "inscription" && m === "POST") {
+    const b = await readBody(req);
+    const identifiant = normIdentifiant(b.identifiant);
+    if (!/^[a-z0-9._-]{3,30}$/.test(identifiant)) return send(res, 400, { erreur: "Identifiant : 3 à 30 caractères (lettres sans accents, chiffres, . _ -)." });
+    if (String(b.motDePasse || "").length < 6) return send(res, 400, { erreur: "Le mot de passe doit avoir au moins 6 caractères." });
+    if (db.profils.some((x) => x.identifiant === identifiant)) return send(res, 409, { erreur: "Cet identifiant est déjà pris." });
+    const infos = nettoyerProfil(b);
+    if (!infos.nom) return send(res, 400, { erreur: "Le nom est obligatoire" });
+    const p = { id: newId(), identifiant, mdp: hacher(b.motDePasse), ...infos, cree: new Date().toISOString(), derniereConnexion: new Date().toISOString(), revisions: 0, reglages: { ...REGLAGES_DEFAUT }, photos: [], sessions: [] };
+    db.profils.push(p); saveDb();
+    ouvrirSession(res, { profilId: p.id }, req);
+    return send(res, 201, { profil: profilPublic(p) });
+  }
+  if (parts[1] === "connexion" && m === "POST") {
+    if (bloque(req)) return send(res, 429, { erreur: "Trop d'essais. Réessaie dans quelques minutes." });
+    const b = await readBody(req);
+    const p = db.profils.find((x) => x.identifiant && x.identifiant === normIdentifiant(b.identifiant));
+    if (!p || !verifier(b.motDePasse, p.mdp)) { echec(req); return send(res, 401, { erreur: "Identifiant ou mot de passe incorrect." }); }
+    p.derniereConnexion = new Date().toISOString(); saveDb();
+    ouvrirSession(res, { profilId: p.id }, req);
+    return send(res, 200, { profil: profilPublic(p) });
+  }
+  if (parts[1] === "deconnexion" && m === "POST") {
+    modifierSession(req, { profilId: null });
+    return send(res, 200, { ok: true });
+  }
+  send(res, 404, { erreur: "Route inconnue" });
+}
+
+async function apiAdmin(req, res, parts) {
+  const m = req.method;
+  if (parts[1] === "initialiser" && m === "POST") {
+    if (config.admin) return send(res, 409, { erreur: "Le mot de passe admin existe déjà." });
+    const b = await readBody(req);
+    const email = normIdentifiant(b.email);
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return send(res, 400, { erreur: "Adresse courriel invalide." });
+    if (String(b.motDePasse || "").length < 6) return send(res, 400, { erreur: "Au moins 6 caractères." });
+    config.admin = { email, ...hacher(b.motDePasse) }; writeJSON(CONFIG_FILE, config);
+    ouvrirSession(res, { admin: true }, req);
+    return send(res, 201, { admin: true });
+  }
+  if (parts[1] === "connexion" && m === "POST") {
+    if (bloque(req)) return send(res, 429, { erreur: "Trop d'essais. Réessaie dans quelques minutes." });
+    const b = await readBody(req);
+    const emailOk = !config.admin?.email || normIdentifiant(b.email) === config.admin.email;
+    if (!emailOk || !verifier(b.motDePasse, config.admin)) { echec(req); return send(res, 401, { erreur: "Courriel ou mot de passe admin incorrect." }); }
+    ouvrirSession(res, { admin: true }, req);
+    return send(res, 200, { admin: true });
+  }
+  if (parts[1] === "deconnexion" && m === "POST") { modifierSession(req, { admin: false }); return send(res, 200, { ok: true }); }
+
+  if (!sessionDe(req)?.admin) return send(res, 403, { erreur: "Accès réservé à l'admin." });
+
+  if (parts[1] === "comptes" && parts.length === 2 && m === "GET") {
+    return send(res, 200, db.profils.map(resumeCompte).sort((a, b) => String(b.derniereActivite).localeCompare(String(a.derniereActivite))));
+  }
+  const p = parts[1] === "comptes" && db.profils.find((x) => x.id === parts[2]);
+  if (!p) return send(res, 404, { erreur: "Compte introuvable" });
+  if (parts[3] === "mdp" && m === "POST") {
+    const b = await readBody(req);
+    if (String(b.motDePasse || "").length < 6) return send(res, 400, { erreur: "Au moins 6 caractères." });
+    p.mdp = hacher(b.motDePasse); saveDb();
+    for (const [j, s] of sessions) if (s.profilId === p.id) sessions.delete(j); // déconnecte l'ancien appareil
+    saveSessions();
+    return send(res, 200, { ok: true });
+  }
+  if (parts.length === 3 && m === "GET") return send(res, 200, profilPublic(p));
+  send(res, 404, { erreur: "Route inconnue" });
+}
 
 async function api(req, res, url) {
   const parts = url.pathname.split("/").filter(Boolean).slice(1); // après "api"
   const m = req.method;
+  const sess = sessionDe(req);
 
   if (parts[0] === "status") {
     return send(res, 200, { ia: !!apiKey(), cleEnv: !!process.env.ANTHROPIC_API_KEY, adresses: lanAddresses().map((a) => `http://${a}:${PORT}`) });
   }
   if (parts[0] === "config" && m === "POST") {
+    if (!sess?.admin) return send(res, 403, { erreur: "Seul l'admin peut changer la clé API." });
     const b = await readBody(req);
     config.apiKey = String(b.apiKey || "").trim();
     writeJSON(CONFIG_FILE, config);
     return send(res, 200, { ia: !!apiKey() });
   }
 
-  if (parts[0] === "sync") return apiSync(req, res, parts, url);
+  if (parts[0] === "auth") return apiAuth(req, res, parts);
+  if (parts[0] === "admin") return apiAdmin(req, res, parts);
+  if (parts[0] === "sync") return apiSync(req, res, parts, url, sess);
+  if (parts[0] === "dico" && m === "POST") {
+    if (!sess?.profilId && !sess?.admin) return send(res, 401, { erreur: "Connecte-toi d'abord." });
+    const b = await readBody(req, 50000);
+    return send(res, 200, await dico(db.profils.find((x) => x.id === sess.profilId), b.texte));
+  }
 
-  if (parts[0] === "profils") {
-    if (parts.length === 1 && m === "GET") return send(res, 200, db.profils.map(profilPublic));
-    if (parts.length === 1 && m === "POST") {
-      const b = nettoyerProfil(await readBody(req));
-      if (!b.nom) return send(res, 400, { erreur: "Le nom est obligatoire" });
-      const p = { id: newId(), ...b, cree: new Date().toISOString(), revisions: 0, reglages: { ...REGLAGES_DEFAUT }, photos: [], sessions: [] };
-      db.profils.push(p); saveDb();
-      return send(res, 201, profilPublic(p));
-    }
+  if (parts[0] === "profils" && parts[1]) {
     const p = db.profils.find((x) => x.id === parts[1]);
-    if (!p) return send(res, 404, { erreur: "Profil introuvable" });
+    if (!p || !peutVoir(sess, p.id)) return send(res, sess ? 404 : 401, { erreur: sess ? "Profil introuvable" : "Connecte-toi d'abord." });
 
     if (parts.length === 2 && m === "GET") return send(res, 200, profilPublic(p));
     if (parts.length === 2 && m === "PUT") { Object.assign(p, nettoyerProfil(await readBody(req))); saveDb(); return send(res, 200, profilPublic(p)); }
@@ -484,6 +690,8 @@ async function api(req, res, url) {
     if (parts.length === 2 && m === "DELETE") {
       for (const ph of p.photos) fs.rmSync(path.join(PHOTOS, ph.fichier), { force: true });
       db.profils.splice(db.profils.indexOf(p), 1); saveDb();
+      for (const [j, s] of sessions) if (s.profilId === p.id) { if (s.admin) s.profilId = null; else sessions.delete(j); }
+      saveSessions();
       return send(res, 200, { ok: true });
     }
 
@@ -563,12 +771,13 @@ setInterval(() => {
   }
 }, 20000).unref();
 
-async function apiSync(req, res, parts, url) {
+// Le code à 4 chiffres sert de clé au téléphone; seul le compte connecté côté ordinateur peut le créer et piloter le quiz.
+async function apiSync(req, res, parts, url, sess) {
   const m = req.method;
   if (parts.length === 1 && m === "POST") {
     const b = await readBody(req);
     const p = db.profils.find((x) => x.id === b.profilId);
-    if (!p) return send(res, 404, { erreur: "Profil introuvable" });
+    if (!p || !peutVoir(sess, p.id)) return send(res, 404, { erreur: "Profil introuvable" });
     const ancien = syncs.get(String(b.code || ""));
     if (ancien && ancien.profilId === p.id) { ancien.vu = Date.now(); return send(res, 200, { code: ancien.code }); }
     const code = nouveauCode();
@@ -583,8 +792,10 @@ async function apiSync(req, res, parts, url) {
   if (parts.length === 2 && m === "GET") {
     return send(res, 200, { code: s.code, profil: p ? { id: p.id, nom: p.nom, avatar: p.avatar, annee: p.annee } : null, hote: s.hotes.size > 0 });
   }
+  const estHote = peutVoir(sess, s.profilId);
   if (parts[2] === "flux" && m === "GET") {
     const role = url.searchParams.get("role") === "hote" ? "hotes" : "tels";
+    if (role === "hotes" && !estHote) return send(res, 403, { erreur: "Réservé à l'ordinateur connecté au compte." });
     res.writeHead(200, { "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-store", Connection: "keep-alive", "X-Accel-Buffering": "no" });
     res.write("retry: 2000\n\n");
     s[role].add(res);
@@ -594,6 +805,7 @@ async function apiSync(req, res, parts, url) {
     return;
   }
   if (parts[2] === "etat" && m === "POST") {
+    if (!estHote) return send(res, 403, { erreur: "Réservé à l'ordinateur connecté au compte." });
     s.etat = await readBody(req, 200000);
     diffuser(s.tels, "etat", s.etat);
     return send(res, 200, { ok: true });
@@ -612,6 +824,7 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname.startsWith("/api/")) return await api(req, res, url);
     if (url.pathname.startsWith("/photos/")) {
       const f = path.basename(decodeURIComponent(url.pathname));
+      if (!peutVoir(sessionDe(req), f.split("-")[0])) { res.writeHead(403); return res.end(); }
       return serveFile(res, path.join(PHOTOS, f));
     }
     const rel = url.pathname === "/" ? "index.html" : decodeURIComponent(url.pathname).replace(/^\/+/, "");
@@ -630,7 +843,7 @@ const server = http.createServer(async (req, res) => {
 server.requestTimeout = 0; // les générations avec recherche web peuvent prendre plus d'une minute
 
 server.listen(PORT, "0.0.0.0", () => {
-  console.log("\n  ⚡ MANGA RÉVISION est lancé !\n");
+  console.log("\n  ⚡ ReviZ est lancé !\n");
   console.log(`  Sur cet ordinateur : http://localhost:${PORT}`);
   for (const a of lanAddresses()) console.log(`  Sur le même Wi-Fi  : http://${a}:${PORT}`);
   console.log(`\n  IA : ${apiKey() ? "activée ✅" : "mode démo (ajoute une clé API dans ⚙️ Paramètres)"}\n`);
