@@ -1,0 +1,6 @@
+node_modules/
+# Données personnelles (profils, résultats, photos) et clé API
+data/
+.env
+.claude/
+.DS_Store

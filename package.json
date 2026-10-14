@@ -1,0 +1,16 @@
+{
+  "name": "manga-revision",
+  "version": "1.0.0",
+  "description": "Module de révision style manga pour élèves du Québec, accessible sur le Wi-Fi local",
+  "main": "server.js",
+  "scripts": {
+    "start": "node --env-file-if-exists=.env server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.134.0"
+  }
+}
