@@ -571,3 +571,29 @@ button.btn-indice:hover { transform: translate(-1px, -1px); box-shadow: 3px 3px 
 .popup-triche { max-width: 460px; text-align: center; border-color: #c0392b; }
 .popup-triche h2 { color: #c0392b; }
 .popup-triche .actions { justify-content: center; }
+
+/* Progrès : code couleur par matière, moyennes, historique unique */
+.puce .pastille { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--c); border: 1.5px solid var(--encre); margin-right: 6px; vertical-align: -1px; }
+.puce[style*="--c"] { background: color-mix(in srgb, var(--c) 14%, #fff); }
+.puce[style*="--c"].actif { background: var(--c); color: #fff; }
+.puce[style*="--c"].actif .pastille { background: #fff; }
+.filtres + .filtres { margin-top: -6px; }
+.stat.moy { background: var(--jaune); }
+.badge-matiere { display: inline-block; padding: 2px 8px; border-left: 6px solid var(--c); border-radius: 4px; background: color-mix(in srgb, var(--c) 15%, #fff); font-weight: 700; font-size: .88rem; white-space: nowrap; }
+.grille-moyennes { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; }
+.carte-moyenne { font: inherit; color: var(--encre); text-align: left; cursor: pointer; display: grid; gap: 4px; padding: 10px 12px;
+  border: 3px solid var(--encre); border-top: 10px solid var(--c); background: color-mix(in srgb, var(--c) 8%, #fff); box-shadow: 4px 4px 0 var(--encre); }
+.carte-moyenne:hover { transform: translate(-1px, -1px); box-shadow: 6px 6px 0 var(--encre); }
+.carte-moyenne.actif { outline: 3px solid var(--c); outline-offset: 2px; }
+.carte-moyenne .nom { font-weight: 800; }
+.carte-moyenne .val { font-family: var(--titre); font-size: 2rem; line-height: 1; font-weight: 400; }
+.ok { color: #1e7a46; } .ko { color: #c0392b; }
+.ligne-matiere td:first-child { box-shadow: inset 6px 0 0 var(--c); padding-left: 14px; }
+.carte-session.ligne-matiere { border-left: 8px solid var(--c); }
+.historique tr:has(.pf-case:checked), .carte-session:has(.pf-case:checked) { background: #fff4c2; }
+.pf-case, #pf-tout { width: 18px; height: 18px; accent-color: var(--encre); cursor: pointer; }
+.btn-corbeille { font-size: 1.05rem; line-height: 1; padding: 5px 8px; border: 2px solid var(--encre); border-radius: 8px; background: #fff; cursor: pointer; }
+.btn-corbeille:hover { background: #fdecea; border-color: #c0392b; }
+.barre-selection { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 0 0 10px; }
+.haut-session { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.haut-session .pct { position: static; margin-left: auto; }

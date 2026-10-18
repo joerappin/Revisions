@@ -207,7 +207,7 @@ async function chargerEcoles() {
 const bandeauDemo = () => etat.status.ia ? "" :
   `<div class="demo-bandeau">MODE DÉMO — questions d'exemple seulement. ${etat.moi.admin
     ? `Ajoute une clé API dans <a href="#/parametres">🔑 Paramètres</a>`
-    : `L'admin doit ajouter une clé API (<a href="#/admin">🛡 Admin</a> → Clé API)`} pour que Sensei cherche sur internet et crée des tests sur mesure.</div>`;
+    : `L'admin doit ajouter une clé API (<a href="#/admin">🛡 Admin</a> → Clé API)`} pour que Sensei cherche sur internet et crée des révisions sur mesure.</div>`;
 
 // ================= Synchro avec le téléphone (côté ordinateur) =================
 const sync = {
@@ -386,7 +386,7 @@ function panneauCodeTel() {
   return `<div class="panel noir code-tel">
     <span class="etiquette">📱 MODE TÉLÉCOMMANDE</span>
     <h2 style="color:var(--jaune)">Tu es sur ton téléphone ?</h2>
-    <p>Entre le code affiché sur l'ordinateur pour faire le test avec ton téléphone.</p>
+    <p>Entre le code affiché sur l'ordinateur pour faire ta révision avec ton téléphone.</p>
     <form id="form-code" class="actions" style="align-items:stretch">
       <input id="code-tel" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="0000" value="${esc(dernier)}" class="champ-code" aria-label="Code à 4 chiffres">
       <button class="btn">Connecter ⚡</button>
@@ -432,7 +432,7 @@ function ecranConnexion() {
         <div class="panel jaune incline-d"><span class="etiquette">NOUVEAU ?</span>
           <h2>Crée ton compte</h2>
           <p>Ton compte garde ton profil, tes résultats, le nombre de tes révisions et tes photos de cours.</p>
-          <ul class="liste-manga"><li>Fiches de révision et tests sur mesure</li><li>Ton téléphone devient une télécommande</li><li>Aide aux devoirs avec photo</li></ul>
+          <ul class="liste-manga"><li>Leçons et révisions sur mesure</li><li>Ton téléphone devient une télécommande</li><li>Aide aux devoirs avec photo</li></ul>
           <div class="actions"><a class="btn rouge" href="#/inscription">✨ Créer mon compte</a></div>
         </div>
       </div>
@@ -663,20 +663,32 @@ function graphique(sessions) {
       ${s.length > 1 ? `<text x="${x(s.length - 1)}" y="${H - 12}" text-anchor="end" font-size="11" fill="#6b6b6b">${fmtDate(s.at(-1).date)}</text>` : ""}
     </svg>`;
 }
-const libType = (s) => s.type === "final" ? "Examen" : s.type === "lecon" ? "Leçon" : s.photo ? "Test photo" : "Révision";
+const libType = (s) => s.type === "final" ? "Examen" : s.type === "lecon" ? "Leçon" : s.photo ? "Révision photo" : "Révision";
 function resumeReglages(r) {
   return `${r.minuteur ? `⏱ ${r.secondesChoix} s (choix) / ${r.secondesOuvertes} s (ouvertes)` : "⏱ sans minuteur"} · ${r.nbRevision} questions en révision · ${r.nbFinal} à l'examen · ${r.pctQcm} % QCM / ${100 - r.pctQcm} % ouvertes · maths : ${100 - r.pctQcmMaths} % ouvertes avec calcul`;
 }
 
 // --- Sections du profil, réutilisées par l'écran web, les onglets mobiles et la vue admin ---
-function statsProfil(p) {
-  const finals = p.sessions.filter((s) => s.type === "final");
-  return {
-    finals,
-    moy: finals.length ? Math.round(finals.reduce((a, s) => a + s.pourcentage, 0) / finals.length) : null,
-    meilleur: finals.length ? Math.max(...finals.map((s) => s.pourcentage)) : null,
-  };
+// Moyennes : toutes les notes (révisions + examens), jamais la meilleure note seule.
+const typeDe = (s) => (s.type === "final" ? "final" : s.type === "lecon" ? "lecon" : "revision");
+const notees = (ss) => ss.filter((s) => s.type !== "lecon" && Number.isFinite(s.pourcentage));
+const moyenneDe = (ss) => { const n = notees(ss); return n.length ? Math.round(n.reduce((a, s) => a + s.pourcentage, 0) / n.length) : null; };
+const fmtPct = (v) => (v == null ? "–" : v + " %");
+// Code couleur par matière (bande à gauche des lignes, puces, cartes de moyenne).
+const COUL_MATIERE = [
+  [/fran/i, "#e63946"], [/math/i, "#f77f00"], [/angl/i, "#0096c7"], [/espagnol/i, "#6a994e"],
+  [/éducation physique/i, "#06a77d"], [/culture/i, "#9d4edd"], [/financ/i, "#5c677d"],
+  [/univers|géo|hist|monde/i, "#a0522d"], [/scien|chimie|physique|techno|ATS|STE/i, "#2d6a4f"],
+  [/arts?\b|plastique/i, "#e5679b"], [/musique/i, "#c99700"],
+];
+const PALETTE_MATIERE = ["#3a86ff", "#ff006e", "#8338ec", "#fb5607", "#118ab2", "#7a5c3c"];
+function couleurMatiere(m) {
+  const t = COUL_MATIERE.find(([re]) => re.test(m || ""));
+  if (t) return t[1];
+  let h = 0; for (const c of String(m || "")) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return PALETTE_MATIERE[h % PALETTE_MATIERE.length];
 }
+const badgeMatiere = (m) => `<span class="badge-matiere" style="--c:${couleurMatiere(m)}">${esc(m || "—")}</span>`;
 const S = {
   entete: (p, { lectureSeule = false } = {}) => `
     <div class="panel trame">
@@ -713,7 +725,7 @@ const S = {
       <p class="aide" style="color:#111;margin-top:8px" id="resume-lecon"></p>
       <div class="actions">
         <button class="btn rouge" data-go="lecon">📖 Ouvrir la leçon</button>
-        <button class="btn bleu" data-go="test">⚔️ Tests</button>
+        <button class="btn bleu" data-go="test">⚔️ Révision</button>
         <button class="btn blanc" data-go="photo">📸 Leçon en photo</button>
         <button class="btn blanc" data-go="devoirs">✍️ Aide aux devoirs</button>
       </div>
@@ -722,32 +734,18 @@ const S = {
   },
   sync: () => `<div class="panel noir"><span class="etiquette">📱 TÉLÉCOMMANDE</span><div id="zone-sync"></div></div>`,
   lienCode: () => `<a class="panel noir carte-lien" href="#/code"><span class="etiquette">📱 TÉLÉCOMMANDE</span>
-    <strong style="color:var(--jaune)">Entrer le code de l'ordinateur ▶</strong><br><span class="aide" style="color:#ccc">Pour répondre au test depuis ton téléphone.</span></a>`,
+    <strong style="color:var(--jaune)">Entrer le code de l'ordinateur ▶</strong><br><span class="aide" style="color:#ccc">Pour répondre à la révision depuis ton téléphone.</span></a>`,
   stats: (p) => {
-    const { finals, moy, meilleur } = statsProfil(p);
+    const ss = p.sessions, rev = ss.filter((x) => typeDe(x) === "revision"), exa = ss.filter((x) => x.type === "final");
     return `<div class="stats panel">
       <span class="etiquette">STATS DU HÉROS</span>
-      <div class="stat rev"><div class="val">${p.sessions.filter((s) => s.type === "lecon").length}</div><div class="lib">leçons lues</div></div>
-      <div class="stat"><div class="val">${p.sessions.filter((s) => s.type === "revision").length}</div><div class="lib">révisions</div></div>
-      <div class="stat"><div class="val">${finals.length}</div><div class="lib">examens</div></div>
-      <div class="stat"><div class="val">${moy == null ? "–" : moy + "%"}</div><div class="lib">moyenne aux examens</div></div>
-      <div class="stat"><div class="val">${meilleur == null ? "–" : rang(meilleur)}</div><div class="lib">meilleur rang${meilleur == null ? "" : ` (${meilleur}%)`}</div></div>
+      <div class="stat rev"><div class="val">${ss.filter((x) => x.type === "lecon").length}</div><div class="lib">leçons lues</div></div>
+      <div class="stat"><div class="val">${rev.length}</div><div class="lib">révisions</div></div>
+      <div class="stat"><div class="val">${exa.length}</div><div class="lib">examens</div></div>
+      <div class="stat moy"><div class="val">${fmtPct(moyenneDe(ss))}</div><div class="lib">moyenne globale</div></div>
+      <div class="stat"><div class="val">${fmtPct(moyenneDe(rev))}</div><div class="lib">moyenne des révisions</div></div>
+      <div class="stat"><div class="val">${fmtPct(moyenneDe(exa))}</div><div class="lib">moyenne des examens</div></div>
     </div>`;
-  },
-  progression: (p) => {
-    const hist = [...p.sessions].reverse().slice(0, 25);
-    const lignes = etat.mobile
-      ? `<div class="liste-sessions">${hist.map((s) => `<div class="carte-session"><span class="badge ${s.type}">${libType(s)}</span>
-          <strong class="pct">${s.type === "lecon" ? "📖" : s.pourcentage + "%"}</strong><div>${esc(s.sujet)}</div><div class="aide">${esc(s.matiere)} · ${fmtDate(s.date)}${s.type === "lecon" ? "" : ` · ${fmtPoints(s.score)}/${s.total}`}</div>${s.details?.length ? `<a class="btn blanc petit" style="margin-top:6px" href="#/profil/${p.id}/evaluation/${s.id}">👁 Revoir</a>` : ""}</div>`).join("")}</div>`
-      : `<div class="table-scroll"><table class="historique">
-        <thead><tr><th>Date</th><th>Type</th><th>Matière</th><th>Leçon</th><th>Résultat</th><th></th></tr></thead>
-        <tbody>${hist.map((s) => `<tr>
-          <td>${fmtDate(s.date)}</td>
-          <td><span class="badge ${s.type}">${libType(s)}</span></td>
-          <td>${esc(s.matiere)}</td><td>${esc(s.sujet)}</td>
-          <td>${s.type === "lecon" ? "📖 lue" : `<strong>${s.pourcentage}%</strong> (${fmtPoints(s.score)}/${s.total})`}</td>
-          <td>${s.details?.length ? `<a class="btn blanc petit" href="#/profil/${p.id}/evaluation/${s.id}">👁 Revoir</a>` : ""}</td></tr>`).join("")}</tbody></table></div>`;
-    return `<div class="panel"><span class="etiquette">PROGRESSION</span>${graphique(p.sessions)}${p.sessions.length ? lignes : ""}</div>`;
   },
   photos: (p, { lectureSeule = false } = {}) => `
     <div class="panel">
@@ -835,7 +833,7 @@ function brancherProfil(p, recharger) {
       $("#sync-off").addEventListener("click", () => { sync.fermer(); dessinerSync(); });
       majSyncUI();
     } else {
-      z.innerHTML = `<p>Fais le test sur l'ordinateur et réponds avec ton téléphone, comme une manette de jeu ! Les questions et le temps restent sur l'écran de l'ordinateur.</p>
+      z.innerHTML = `<p>Fais ta révision sur l'ordinateur et réponds avec ton téléphone, comme une manette de jeu ! Les questions et le temps restent sur l'écran de l'ordinateur.</p>
         <button class="btn" id="sync-on">📱 Connecter mon téléphone</button>`;
       $("#sync-on").addEventListener("click", async () => {
         try { await sync.activer(p); dessinerSync(); } catch (e) { toast(e.message, true); }
@@ -891,17 +889,92 @@ function puceFiltres(matieres, actif, attr = "data-filtre-matiere") {
   return `<div class="filtres">${["", ...matieres].map((m) => `<button type="button" class="puce ${m === actif ? "actif" : ""}" ${attr}="${esc(m)}">${m ? esc(m) : "Toutes les matières"}</button>`).join("")}</div>`;
 }
 const matieresDe = (p) => [...new Set(p.sessions.map((s) => s.matiere).filter(Boolean))].sort();
+// Vue des progrès : filtres matière + type, moyennes, graphique, puis UN seul historique (cases à cocher, corbeille).
+const TYPES_PROGRES = [["", "Tout"], ["lecon", "📖 Leçons"], ["revision", "⚡ Révisions"], ["final", "⚔️ Examens"]];
 function contenuProgres(p) {
-  const f = matieresDe(p).includes(etat.filtreMatiere) ? etat.filtreMatiere : "";
-  const pf = { ...p, sessions: f ? p.sessions.filter((s) => s.matiere === f) : p.sessions };
-  return puceFiltres(matieresDe(p), f) + S.stats(pf) + S.progression(pf);
+  const matieres = matieresDe(p);
+  const fm = matieres.includes(etat.filtreMatiere) ? etat.filtreMatiere : "";
+  const ft = TYPES_PROGRES.some(([t]) => t && t === etat.filtreType) ? etat.filtreType : "";
+  const dansMatiere = fm ? p.sessions.filter((x) => x.matiere === fm) : p.sessions;
+  const choisies = ft ? dansMatiere.filter((x) => typeDe(x) === ft) : dansMatiere;
+  const filtres = !p.sessions.length ? "" : `
+    <div class="filtres">${["", ...matieres].map((m) => `<button type="button" class="puce ${m === fm ? "actif" : ""}" data-pf-matiere="${esc(m)}" ${m ? `style="--c:${couleurMatiere(m)}"` : ""}>${m ? `<i class="pastille"></i>${esc(m)}` : "Toutes les matières"}</button>`).join("")}</div>
+    <div class="filtres">${TYPES_PROGRES.map(([t, lib]) => `<button type="button" class="puce ${t === ft ? "actif" : ""}" data-pf-type="${t}">${lib}</button>`).join("")}</div>`;
+  // Moyenne par matière (selon le type choisi)
+  const parMatiere = (fm ? [fm] : matieres).map((m) => {
+    const ss = p.sessions.filter((x) => x.matiere === m && (!ft || typeDe(x) === ft));
+    const rev = ss.filter((x) => typeDe(x) === "revision"), exa = ss.filter((x) => x.type === "final");
+    return { m, moy: moyenneDe(ss), rev, exa, lecons: ss.filter((x) => x.type === "lecon").length };
+  }).filter((x) => x.rev.length || x.exa.length || x.lecons);
+  const moyennes = ft === "lecon" || !parMatiere.length ? "" : `
+    <div class="panel"><span class="etiquette">MOYENNE PAR MATIÈRE</span>
+      <div class="grille-moyennes">${parMatiere.map((x) => `
+        <button type="button" class="carte-moyenne ${x.m === fm ? "actif" : ""}" data-pf-matiere="${x.m === fm ? "" : esc(x.m)}" style="--c:${couleurMatiere(x.m)}">
+          <span class="nom">${esc(x.m)}</span>
+          <strong class="val ${x.moy == null ? "" : x.moy >= 60 ? "ok" : "ko"}">${fmtPct(x.moy)}</strong>
+          <span class="aide">⚡ ${x.rev.length} révision${x.rev.length > 1 ? "s" : ""} · moy. ${fmtPct(moyenneDe(x.rev))}<br>⚔️ ${x.exa.length} examen${x.exa.length > 1 ? "s" : ""} · moy. ${fmtPct(moyenneDe(x.exa))}</span>
+        </button>`).join("")}</div>
+    </div>`;
+  const hist = [...choisies].reverse();
+  const resultat = (x) => (x.type === "lecon" ? "📖 lue" : `<strong class="${x.pourcentage >= 60 ? "ok" : "ko"}">${x.pourcentage} %</strong> <span class="aide">(${fmtPoints(x.score)}/${x.total})</span>`);
+  const revoir = (x) => (x.details?.length ? `<a class="btn blanc petit" href="#/profil/${p.id}/evaluation/${x.id}">👁 Revoir</a>` : "");
+  const corbeille = (x) => `<button type="button" class="btn-corbeille" data-pf-suppr="${x.id}" title="Supprimer cette ligne" aria-label="Supprimer cette ligne">🗑</button>`;
+  const caseL = (x) => `<input type="checkbox" class="pf-case" value="${x.id}" aria-label="Sélectionner cette ligne">`;
+  const lignes = !hist.length ? `<p class="vide">${p.sessions.length ? "Rien pour ce filtre." : "Aucun résultat pour l'instant. Lance ta première révision !"}</p>` : `
+    <div class="barre-selection">
+      <label class="case" style="margin:0"><input type="checkbox" id="pf-tout"> Tout cocher</label>
+      <button type="button" class="btn rouge petit" id="pf-suppr" disabled>🗑 Supprimer la sélection</button>
+      <span class="aide">${hist.length} ligne${hist.length > 1 ? "s" : ""}</span>
+    </div>
+    ${etat.mobile
+      ? `<div class="liste-sessions">${hist.map((x) => `<div class="carte-session ligne-matiere" style="--c:${couleurMatiere(x.matiere)}">
+          <div class="haut-session">${caseL(x)}<span class="badge ${x.type}">${libType(x)}</span><strong class="pct">${x.type === "lecon" ? "📖" : x.pourcentage + " %"}</strong>${corbeille(x)}</div>
+          <div>${esc(x.sujet)}</div><div class="aide">${esc(x.matiere)} · ${fmtDate(x.date)}${x.type === "lecon" ? "" : ` · ${fmtPoints(x.score)}/${x.total}`}</div>${revoir(x)}</div>`).join("")}</div>`
+      : `<div class="table-scroll"><table class="historique">
+          <thead><tr><th></th><th>Date</th><th>Type</th><th>Matière</th><th>Leçon</th><th>Résultat</th><th></th><th></th></tr></thead>
+          <tbody>${hist.map((x) => `<tr class="ligne-matiere" style="--c:${couleurMatiere(x.matiere)}">
+            <td>${caseL(x)}</td><td>${fmtDate(x.date)}</td><td><span class="badge ${x.type}">${libType(x)}</span></td>
+            <td>${badgeMatiere(x.matiere)}</td><td>${esc(x.sujet)}</td><td>${resultat(x)}</td><td>${revoir(x)}</td><td>${corbeille(x)}</td></tr>`).join("")}</tbody></table></div>`}`;
+  return filtres + S.stats({ ...p, sessions: dansMatiere }) + moyennes + `
+    <div class="panel"><span class="etiquette">PROGRESSION${fm ? " · " + esc(fm).toUpperCase() : ""}</span>
+      ${ft === "lecon" ? "" : graphique(choisies)}
+      <h3 style="margin:18px 0 6px">Historique</h3>${lignes}
+    </div>`;
 }
-const vueProgres = (p) => `<div id="zone-progres">${contenuProgres(p)}</div>`;
+const vueProgres = (p) => { etat.progres = p; return `<div id="zone-progres">${contenuProgres(p)}</div>`; };
+const majProgres = () => { const z = $("#zone-progres"); if (z && etat.progres) z.innerHTML = contenuProgres(etat.progres); };
+async function supprimerLignes(p, ids) {
+  if (!ids.length) return;
+  if (!confirm(ids.length > 1 ? `Supprimer ces ${ids.length} lignes de l'historique (et leurs résultats) ? C'est définitif.` : "Supprimer cette ligne de l'historique (et son résultat) ? C'est définitif.")) return;
+  try {
+    const r = await api(`/profils/${p.id}/sessions`, { method: "POST", body: { ids } });
+    p.sessions = r.profil.sessions; p.revisions = r.profil.revisions;
+    if (etat.profil?.id === p.id) etat.profil.sessions = p.sessions;
+    toast(`${r.supprimees} ligne${r.supprimees > 1 ? "s" : ""} supprimée${r.supprimees > 1 ? "s" : ""}.`);
+    majProgres();
+  } catch (err) { toast(err.message, true); }
+}
+document.addEventListener("click", (e) => {
+  if (!e.target.closest("#zone-progres") || !etat.progres) return;
+  const bm = e.target.closest("[data-pf-matiere]"), bt = e.target.closest("[data-pf-type]"), bs = e.target.closest("[data-pf-suppr]");
+  if (bm) { etat.filtreMatiere = bm.dataset.pfMatiere; majProgres(); }
+  else if (bt) { etat.filtreType = bt.dataset.pfType; majProgres(); }
+  else if (bs) supprimerLignes(etat.progres, [bs.dataset.pfSuppr]);
+  else if (e.target.id === "pf-suppr") supprimerLignes(etat.progres, [...document.querySelectorAll("#zone-progres .pf-case:checked")].map((c) => c.value));
+});
+document.addEventListener("change", (e) => {
+  if (!e.target.closest("#zone-progres")) return;
+  const cases = [...document.querySelectorAll("#zone-progres .pf-case")];
+  if (e.target.id === "pf-tout") cases.forEach((c) => (c.checked = e.target.checked));
+  const n = cases.filter((c) => c.checked).length, b = $("#pf-suppr");
+  if (b) { b.disabled = !n; b.textContent = n ? `🗑 Supprimer la sélection (${n})` : "🗑 Supprimer la sélection"; }
+  const tout = $("#pf-tout"); if (tout && e.target.id !== "pf-tout") tout.checked = n === cases.length;
+});
+// Filtre par matière de « Mes leçons »
 document.addEventListener("click", (e) => {
   const b = e.target.closest("[data-filtre-matiere]");
   if (!b) return;
   etat.filtreMatiere = b.dataset.filtreMatiere;
-  if ($("#zone-progres") && etat.profil) $("#zone-progres").innerHTML = contenuProgres(etat.profil);
   if ($("#zone-lecons") && etat.profil) $("#zone-lecons").innerHTML = contenuMesLecons(etat.profil);
 });
 
@@ -925,16 +998,16 @@ function contenuMesLecons(p) {
   const liste = toutes.filter((l) => !f || l.matiere === f);
   const lp = photos.filter((l) => !f || l.matiere === f);
   if (!toutes.length && !photos.length) return `<p class="vide">Tu n'as encore appris aucune leçon. Choisis une matière et une leçon dans l'accueil !</p>`;
-  const meilleur = (arr) => (arr.length ? Math.max(...arr.map((x) => x.pourcentage)) + " %" : "–");
+  const moy = (arr) => fmtPct(moyenneDe(arr));
   return puceFiltres(matieres, f) + `<div class="grille-lecons">${liste.map((l) => `
     <div class="carte-lecon ${l.lectures.length ? "" : "non-lue"}">
-      <span class="badge tag">${esc(l.matiere)}</span>
+      ${badgeMatiere(l.matiere)}
       <h3>${esc(l.sujet)}</h3>
       <div>${l.lectures.length ? `📖 Lue <strong>${l.lectures.length}×</strong> · dernière fois le ${fmtDate(l.lectures.at(-1).date)}` : "📖 Pas encore lue jusqu'au bout"}</div>
-      <div>⚡ ${l.revisions.length} révision${l.revisions.length > 1 ? "s" : ""} (meilleur ${meilleur(l.revisions)}) · ⚔️ ${l.examens.length} examen${l.examens.length > 1 ? "s" : ""} (meilleur ${meilleur(l.examens)})</div>
+      <div>⚡ ${l.revisions.length} révision${l.revisions.length > 1 ? "s" : ""} (moy. ${moy(l.revisions)}) · ⚔️ ${l.examens.length} examen${l.examens.length > 1 ? "s" : ""} (moy. ${moy(l.examens)})</div>
       <div class="actions" style="margin-top:10px">
         <button class="btn petit" data-ouvrir-lecon="${esc(l.matiere)}|${esc(l.sujet)}|lecon">📖 Revoir la leçon</button>
-        <button class="btn blanc petit" data-ouvrir-lecon="${esc(l.matiere)}|${esc(l.sujet)}|test">⚔️ Tests</button>
+        <button class="btn blanc petit" data-ouvrir-lecon="${esc(l.matiere)}|${esc(l.sujet)}|test">⚔️ Révision</button>
       </div>
     </div>`).join("")}
     ${lp.map((l) => `<div class="carte-lecon"><span class="badge lecon">📸 ${esc(l.matiere)}</span><h3>${esc(l.titre)}</h3>
@@ -1008,7 +1081,7 @@ async function ecranReglages(id) {
         <h3 style="margin-top:20px">❓ Nombre de questions</h3>
         <div class="mission">
           <div><label for="r-nr">Quiz de révision</label><input id="r-nr" type="number" name="nbRevision" min="5" max="25" value="${r.nbRevision}"></div>
-          <div><label for="r-nf">Test final</label><input id="r-nf" type="number" name="nbFinal" min="10" max="40" value="${r.nbFinal}"></div>
+          <div><label for="r-nf">Examen</label><input id="r-nf" type="number" name="nbFinal" min="10" max="40" value="${r.nbFinal}"></div>
         </div>
 
         <h3 style="margin-top:20px">⚖️ Types de questions</h3>
@@ -1357,7 +1430,7 @@ function popupTriche(ensuite) {
     <div class="modal panel popup-triche" role="alertdialog" aria-modal="true" aria-labelledby="triche-titre">
       <span class="etiquette rouge">🚫 STOP</span>
       <h2 id="triche-titre">Tu as changé d'onglet !</h2>
-      <p>L'aide externe (internet, autre onglet, autre application) n'est <strong>pas permise</strong> pendant le test.</p>
+      <p>L'aide externe (internet, autre onglet, autre application) n'est <strong>pas permise</strong> pendant la révision et l'examen.</p>
       <p>La réponse à cette question est donc <strong>comptée comme fausse</strong> et on passe à la question suivante.</p>
       <div class="actions"><button type="button" class="btn rouge" id="triche-ok">J'ai compris ▶</button></div>
     </div>`;
@@ -1410,13 +1483,13 @@ async function terminerQuiz() {
       ${erreurs.length ? `<p><strong>Notions à retravailler :</strong> ${erreurs.map(esc).join(", ")}</p>` : ""}
       <div class="actions">
         ${z.photo ? `<a class="btn rouge" href="#/profil/${p.id}/photo">📸 Mes leçons en photo</a>` : `
-        <a class="btn bleu" href="#/profil/${p.id}/test">⚔️ Retour aux tests et à l'historique</a>
+        <a class="btn bleu" href="#/profil/${p.id}/test">⚔️ Retour aux révisions et à l'historique</a>
         <a class="btn rouge" href="#/profil/${p.id}/lecon">📖 Revoir la leçon</a>`}
         <a class="btn blanc" href="#/">🏠 Accueil</a>
       </div>
     </div>
     <div class="panel"><span class="etiquette">${z.type === "final" ? "CORRIGÉ DÉTAILLÉ" : "TES RÉPONSES ET LES CORRECTIONS"}</span>
-      <p class="aide">Tu pourras revoir cette évaluation quand tu veux dans l'onglet ⚔️ Test (bouton 👁 Revoir).</p>
+      <p class="aide">Tu pourras revoir cette évaluation quand tu veux dans l'onglet ⚔️ Révision (bouton 👁 Revoir).</p>
       ${res.map((x, i) => detailCorrection(detailDe(x.q, x.rep, x.ok, x.commentaire, { calcul: x.calcul, points: x.points, orthographe: x.orthographe, indice_vu: x.indice_vu, triche: x.triche }), { numero: i + 1 })).join("")}
     </div>
     ${sourcesHTML(z.sources)}`;
@@ -1489,11 +1562,11 @@ function historiqueLecon(p, matiere, lecon) {
 function resumeLecon(p, matiere, lecon) {
   const { lecons, tests } = historiqueLecon(p, matiere, lecon);
   const l = lecons.length ? `📖 Leçon faite <strong>${lecons.length}×</strong> (dernière fois le ${fmtDate(lecons.at(-1).date)})` : "📖 Leçon pas encore faite";
-  const t = tests.length ? `⚔️ <strong>${tests.length}</strong> test${tests.length > 1 ? "s" : ""} (dernier : ${tests.at(-1).pourcentage} %)` : "⚔️ aucun test";
+  const t = tests.length ? `⚔️ <strong>${tests.length}</strong> révision${tests.length > 1 ? "s" : ""} et examen${tests.length > 1 ? "s" : ""} (dernier : ${tests.at(-1).pourcentage} %)` : "⚔️ aucune révision";
   return `${l} · ${t}`;
 }
 
-const ONGLETS_LECON = [["lecon", "📖 Leçon"], ["test", "⚔️ Test"], ["photo", "📸 Photo"]];
+const ONGLETS_LECON = [["lecon", "📖 Leçon"], ["test", "⚔️ Révision"], ["photo", "📸 Photo"]];
 
 // Page d'une leçon : 3 onglets.
 async function ecranLecon(id, onglet) {
@@ -1644,7 +1717,7 @@ async function ongletTest(p, zone) {
         <div class="stat rev"><div class="val">${lecons.length}</div><div class="lib">leçon${lecons.length > 1 ? "s" : ""} lue${lecons.length > 1 ? "s" : ""}</div></div>
         <div class="stat"><div class="val">${tests.filter((t) => t.type === "revision").length}</div><div class="lib">révisions</div></div>
         <div class="stat"><div class="val">${tests.filter((t) => t.type === "final").length}</div><div class="lib">examens</div></div>
-        <div class="stat"><div class="val">${tests.length ? Math.max(...tests.map((t) => t.pourcentage)) + "%" : "–"}</div><div class="lib">meilleur score</div></div>
+        <div class="stat"><div class="val">${fmtPct(moyenneDe(tests))}</div><div class="lib">moyenne</div></div>
       </div>
       <p>${leconLue ? `📖 Leçon lue <strong>${lecons.length} fois</strong> : ${lecons.map((l) => fmtDate(l.date)).join(", ")}.` : `📖 Leçon pas encore lue.`}</p>
       ${tests.length ? `<div class="table-scroll"><table class="historique"><thead><tr><th>#</th><th>Date</th><th>Type</th><th>Score</th><th></th></tr></thead><tbody>
@@ -1689,7 +1762,7 @@ async function ongletTest(p, zone) {
       demarrerQuiz({ type: "revision", questions: melange(data.questions), matiere: p.matiere, sujet: p.sujet, sources: data.sources });
     } catch (e) {
       finChargement(); enCours = false; toast(e.message, true);
-      phasePret(p, "Tests : " + p.sujet, choixTests, lancer);
+      phasePret(p, "Révision : " + p.sujet, choixTests, lancer);
     }
   };
   const choixTests = [
@@ -1697,7 +1770,7 @@ async function ongletTest(p, zone) {
     ...(revisionFaite ? [{ id: "final", label: "⚔️ EXAMEN" }] : []),
   ];
   zone.querySelectorAll("[data-lancer]").forEach((b) => b.addEventListener("click", () => lancer(b.dataset.lancer)));
-  if (choixTests.length) phasePret(p, "Tests : " + p.sujet, choixTests, lancer);
+  if (choixTests.length) phasePret(p, "Révision : " + p.sujet, choixTests, lancer);
   else sync.envoyer({ phase: "attente" });
 }
 
@@ -1720,7 +1793,7 @@ function panneauOptionsGeo(p) {
   const o = optionsGeo(p);
   const radio = (nom, val, lib) => `<label class="opt"><input type="radio" name="${nom}" value="${val}" ${o[nom === "geo-contenu" ? "contenu" : "format"] === val ? "checked" : ""}> ${lib}</label>`;
   return `<div class="panel trame options-geo" id="options-geo">
-    <span class="etiquette">🗺️ PERSONNALISE TON TEST</span>
+    <span class="etiquette">🗺️ PERSONNALISE TA RÉVISION</span>
     <div class="opt-groupe"><strong>Zones</strong>
       <label class="opt"><input type="checkbox" data-zone="monde" ${o.zones.length === 3 ? "checked" : ""}> 🌍 Monde (tout)</label>
       ${ZONES_GEO.map((z) => `<label class="opt"><input type="checkbox" data-zone="${z}" ${o.zones.includes(z) ? "checked" : ""}> ${{ Europe: "🇪🇺 Europe", "Amériques": "🌎 Amériques", Afrique: "🌍 Afrique" }[z]}</label>`).join("")}
@@ -1790,7 +1863,7 @@ async function ongletPhoto(p, zone, ouvrirId = null) {
   zone.innerHTML = `
     <div class="panel">
       <span class="etiquette">📸 MA LEÇON EN PHOTO</span>
-      ${senseiDit(`Prends ta leçon en photo (cahier, manuel, notes au tableau…) : <strong>1 à ${MAX_PHOTOS} photos</strong>. Appuie ensuite sur <strong>Terminer</strong> : je t'en fais une leçon expliquée avec des schémas, puis un test !`)}
+      ${senseiDit(`Prends ta leçon en photo (cahier, manuel, notes au tableau…) : <strong>1 à ${MAX_PHOTOS} photos</strong>. Appuie ensuite sur <strong>Terminer</strong> : je t'en fais une leçon expliquée avec des schémas, puis une révision !`)}
       <div class="deux" style="gap:12px">
         <label class="zone-upload" for="lp-camera" style="cursor:pointer">📷 <strong>Prendre une photo</strong></label>
         <label class="zone-upload" for="lp-input" style="cursor:pointer">🖼 <strong>Choisir des photos</strong></label>
@@ -1802,14 +1875,14 @@ async function ongletPhoto(p, zone, ouvrirId = null) {
       <div class="galerie" id="lp-apercu"></div>
       <label for="lp-titre">Titre de la leçon (facultatif)</label>
       <input id="lp-titre" placeholder="ex. Les fractions équivalentes" value="${esc(p.sujet || "")}">
-      <div class="actions"><button class="btn rouge" id="lp-go" disabled>✔ Terminer : créer ma leçon et mon test</button></div>
+      <div class="actions"><button class="btn rouge" id="lp-go" disabled>✔ Terminer : créer ma leçon et ma révision</button></div>
     </div>
     ${liste.length ? `<div class="panel"><span class="etiquette">MES LEÇONS EN PHOTO</span>
       <div class="liste-sessions">${liste.map((l) => {
         const tests = p.sessions.filter((s) => s.photo && s.sujet === l.titre);
         return `<div class="carte-session carte-compte">
           <img src="/photos/${esc(l.photos[0])}" alt="" class="vignette">
-          <div style="flex:1"><strong>${esc(l.titre)}</strong><div class="aide">${esc(l.matiere)} · ${fmtDate(l.date)} · ${l.photos.length} photo${l.photos.length > 1 ? "s" : ""} · ${tests.length} test${tests.length > 1 ? "s" : ""}${tests.length ? ` (dernier ${tests.at(-1).pourcentage} %)` : ""}</div>
+          <div style="flex:1"><strong>${esc(l.titre)}</strong><div class="aide">${esc(l.matiere)} · ${fmtDate(l.date)} · ${l.photos.length} photo${l.photos.length > 1 ? "s" : ""} · ${tests.length} révision${tests.length > 1 ? "s" : ""}${tests.length ? ` (dernier ${tests.at(-1).pourcentage} %)` : ""}</div>
             <div class="actions" style="margin-top:6px"><button class="btn petit" data-ouvrir="${l.id}">Ouvrir</button><button class="btn blanc petit" data-suppr-lp="${l.id}">🗑</button></div></div></div>`;
       }).join("")}</div></div>` : ""}
     <div id="lp-lecon"></div>`;
@@ -1837,7 +1910,7 @@ async function ongletPhoto(p, zone, ouvrirId = null) {
     if (!images.length || creation) return;
     creation = true;
     sync.envoyer({ phase: "chargement", profil: { nom: p.nom, avatar: p.avatar } });
-    chargement("Sensei lit ta leçon !", ["Il déchiffre tes photos…", "Il explique chaque notion plus simplement…", "Il dessine des schémas…", "Il prépare ton test…"]);
+    chargement("Sensei lit ta leçon !", ["Il déchiffre tes photos…", "Il explique chaque notion plus simplement…", "Il dessine des schémas…", "Il prépare ta révision…"]);
     let r;
     try { r = await api(`/profils/${p.id}/lecons-photo`, { method: "POST", body: { images, matiere: p.matiere, sujet: $("#lp-titre").value.trim() } }); }
     catch (e) { finChargement(); creation = false; etatTel(); return toast(e.message, true); }
@@ -1870,13 +1943,13 @@ async function afficherLeconPhoto(p, idLecon) {
   if (!l.fiche) { z.innerHTML = `<p class="vide">Leçon introuvable.</p>`; return; }
   const lancer = () => demarrerQuiz({ type: "revision", questions: melange(l.questions), matiere: l.meta.matiere, sujet: l.meta.titre, sources: [], photo: true });
   z.innerHTML = `${l.demo ? bandeauDemo() : ""}<div id="lp-diapos"></div>`;
-  // Comme pour les autres leçons : il faut lire toutes les diapos pour accéder au test.
+  // Comme pour les autres leçons : il faut lire toutes les diapos pour accéder à la révision.
   diaporama($("#lp-diapos"), l.fiche, l.meta.matiere, {
     profil: p,
-    onFin: () => phasePret(p, "Test : " + l.meta.titre, [{ id: "photo", label: "⚡ FAIRE LE TEST" }], lancer),
+    onFin: () => phasePret(p, "Révision : " + l.meta.titre, [{ id: "photo", label: "⚡ FAIRE LA RÉVISION" }], lancer),
     finHTML: () => `<div class="tel-centre"><div class="eclat">BRAVO !</div><h2>Leçon terminée ✔</h2>
       <p>${l.questions.length} questions tirées de ta photo, avec la correction détaillée.</p>
-      <button class="btn rouge" id="lp-test">⚡ Faire le test</button></div>`,
+      <button class="btn rouge" id="lp-test">⚡ Faire la révision</button></div>`,
   });
   z.addEventListener("click", (e) => { if (e.target.id === "lp-test") lancer(); });
 }
@@ -2020,7 +2093,7 @@ function rendreTel(e) {
     return;
   }
   const ecrans = {
-    attente: () => `${senseiDit("Prêt ! Lance une leçon ou un test sur l'ordinateur : ton téléphone deviendra ta manette.")}
+    attente: () => `${senseiDit("Prêt ! Lance une leçon ou une révision sur l'ordinateur : ton téléphone deviendra ta manette.")}
       <button class="tel-gros" id="tel-ouvrir-photo">📸 Envoyer des photos de leçon</button>`,
     chargement: () => `<div class="tel-centre"><div class="sensei grand">${senseiSVG("joie")}</div><h2>Sensei prépare tes questions…</h2><p>Ça peut prendre une minute.</p></div>`,
     pret: () => `<div class="tel-centre"><h2>${esc(e.titre || "Quiz")}</h2><p>Tout est prêt sur l'ordinateur ! Choisis :</p>
@@ -2067,7 +2140,7 @@ function rendreTelPhotos(zone, e) {
     <input type="file" id="tel-gal" accept="image/*" multiple hidden ${nb >= max ? "disabled" : ""}>
     ${nb ? `<button class="btn blanc large" id="tel-retirer" style="margin-top:12px">↩ Retirer la dernière photo</button>` : ""}
     <button class="tel-gros" id="tel-terminer" style="margin-top:18px;background:var(--rouge);color:#fff" ${nb ? "" : "disabled"}>✔ TERMINER</button>
-    <p class="aide" style="text-align:center">Terminer = Sensei crée ta leçon et ton test à partir des photos.</p>`;
+    <p class="aide" style="text-align:center">Terminer = Sensei crée ta leçon et ta révision à partir des photos.</p>`;
   const envoyer = async (fichiers) => {
     const info = $("#tel-envoi");
     let restant = max - nb;
@@ -2329,14 +2402,13 @@ async function ecranAdmin() {
                 <div>📖 ${c.revisions} · ⚔️ ${c.tests} · moy. ${c.moyenne == null ? "–" : c.moyenne + "%"}</div>
                 <div class="aide">${ligneRes(c)}</div></div></a>`).join("")}</div>`
         : `<div class="table-scroll"><table class="historique admin-table" id="admin-liste">
-            <thead><tr><th></th><th>Élève</th><th>Année · école</th><th>Révisions</th><th>Tests</th><th>Moyenne</th><th>Meilleur</th><th>Dernier résultat</th><th>Activité</th></tr></thead>
+            <thead><tr><th></th><th>Élève</th><th>Année · école</th><th>Révisions</th><th>Examens</th><th>Moyenne globale</th><th>Dernier résultat</th><th>Activité</th></tr></thead>
             <tbody>${comptes.map((c) => `<tr data-href="#/admin/compte/${c.id}" data-filtre="${esc(sansAccents([c.nom, c.identifiant, c.ecole, c.annee, ...c.matieres].join(" ")))}">
               <td><div class="mini-portrait petit">${avatarSVG(c.avatar)}</div></td>
               <td><strong>${esc(c.nom)}</strong><br><span class="aide">@${esc(c.identifiant)}</span></td>
               <td>${esc(c.annee || "")}<br><span class="aide">${esc(c.ecole || "")}</span></td>
               <td><strong>${c.revisions}</strong></td><td>${c.tests}</td>
               <td>${c.moyenne == null ? "–" : `<strong class="${c.moyenne >= 60 ? "ok" : "ko"}">${c.moyenne}%</strong>`}</td>
-              <td>${c.meilleur == null ? "–" : rang(c.meilleur) + ` (${c.meilleur}%)`}</td>
               <td>${ligneRes(c)}</td>
               <td>${fmtDate(c.derniereActivite)}</td></tr>`).join("")}</tbody></table></div>`}
     </div>`;
@@ -2359,37 +2431,11 @@ async function ecranAdmin() {
 
 async function ecranAdminCompte(id) {
   const p = await api("/admin/comptes/" + id);
-  const parMatiere = {};
-  for (const s of p.sessions) {
-    const m = (parMatiere[s.matiere] ||= { revisions: 0, finals: [], sujets: new Set() });
-    if (s.type === "final") m.finals.push(s.pourcentage); else m.revisions++;
-    m.sujets.add(s.sujet);
-  }
   app.innerHTML = `
     <div class="actions" style="margin:0 0 16px"><a class="btn blanc petit" href="#/admin">◀ Tous les comptes</a></div>
     ${S.entete(p, { lectureSeule: true })}
-    ${S.stats(p)}
-    <div class="panel"><span class="etiquette">PAR MATIÈRE</span>
-      ${Object.keys(parMatiere).length ? `<div class="table-scroll"><table class="historique"><thead><tr><th>Matière</th><th>Leçons + révisions</th><th>Examens</th><th>Moyenne</th><th>Sujets travaillés</th></tr></thead><tbody>
-        ${Object.entries(parMatiere).map(([m, x]) => `<tr><td><strong>${esc(m)}</strong></td><td>${x.revisions}</td><td>${x.finals.length}</td>
-          <td>${x.finals.length ? Math.round(x.finals.reduce((a, b) => a + b, 0) / x.finals.length) + "%" : "–"}</td><td>${[...x.sujets].map(esc).join(", ")}</td></tr>`).join("")}
-      </tbody></table></div>` : `<p class="vide">Pas encore d'activité.</p>`}
-      <p class="aide">Compte créé le ${fmtDate(p.cree)}${p.derniereConnexion ? ` · dernière connexion le ${fmtDate(p.derniereConnexion)}` : ""} · mission actuelle : ${esc(p.matiere || "—")}${p.sujet ? " / " + esc(p.sujet) : ""}</p>
-    </div>
-    ${S.progression(p)}
-    <div class="panel"><span class="etiquette">🗑 GÉRER L'HISTORIQUE</span>
-      ${p.sessions.length ? `<p class="aide">Coche les lignes à supprimer (leçons lues, révisions, examens et leurs résultats). La suppression est définitive.</p>
-      <div class="actions" style="margin:0 0 10px">
-        <label class="case" style="margin:0"><input type="checkbox" id="h-tout"> Tout cocher</label>
-        <button class="btn rouge petit" id="h-suppr" disabled>🗑 Supprimer la sélection</button>
-        <button class="btn blanc petit" id="h-vider">Tout effacer</button>
-      </div>
-      <div class="table-scroll"><table class="historique"><thead><tr><th></th><th>Date</th><th>Type</th><th>Matière</th><th>Leçon</th><th>Résultat</th><th></th></tr></thead><tbody>
-        ${[...p.sessions].reverse().map((x) => `<tr><td><input type="checkbox" class="h-case" value="${x.id}" aria-label="Sélectionner"></td><td>${fmtDate(x.date)}</td><td><span class="badge ${x.type}">${libType(x)}</span></td>
-          <td>${esc(x.matiere)}</td><td>${esc(x.sujet)}</td><td>${x.type === "lecon" ? "📖 lue" : `<strong>${x.pourcentage}%</strong> (${fmtPoints(x.score)}/${x.total})`}</td>
-          <td><button class="btn blanc petit" data-suppr-session="${x.id}" title="Supprimer cette ligne">🗑</button></td></tr>`).join("")}
-      </tbody></table></div>` : `<p class="vide">Aucune ligne dans l'historique.</p>`}
-    </div>
+    <p class="aide">Compte créé le ${fmtDate(p.cree)}${p.derniereConnexion ? ` · dernière connexion le ${fmtDate(p.derniereConnexion)}` : ""} · mission actuelle : ${esc(p.matiere || "—")}${p.sujet ? " / " + esc(p.sujet) : ""}</p>
+    ${vueProgres(p)}
     ${S.photos(p, { lectureSeule: true })}
     <div class="panel"><span class="etiquette">GESTION DU COMPTE</span>
       <form id="form-reset" class="actions" style="align-items:stretch">
@@ -2401,28 +2447,6 @@ async function ecranAdminCompte(id) {
         <button class="btn rouge" id="suppr-compte">🗑 Supprimer le compte</button>
       </div>
     </div>`;
-  // --- Gestion de l'historique (admin) ---
-  const supprimerSessions = async (corps, message) => {
-    if (!confirm(message)) return;
-    try {
-      const r = await api(`/admin/comptes/${p.id}/sessions`, { method: "POST", body: corps });
-      toast(`${r.supprimees} ligne${r.supprimees > 1 ? "s" : ""} supprimée${r.supprimees > 1 ? "s" : ""}.`);
-      ecranAdminCompte(p.id);
-    } catch (err) { toast(err.message, true); }
-  };
-  const cases = () => [...app.querySelectorAll(".h-case")];
-  const majSel = () => { const n = cases().filter((c) => c.checked).length; const b = $("#h-suppr"); if (b) { b.disabled = !n; b.textContent = n ? `🗑 Supprimer la sélection (${n})` : "🗑 Supprimer la sélection"; } };
-  const zoneHist = $("#h-suppr")?.closest(".panel");
-  if (zoneHist) zoneHist.onchange = (e) => {
-    if (e.target.id === "h-tout") cases().forEach((c) => (c.checked = e.target.checked));
-    if (e.target.id === "h-tout" || e.target.classList.contains("h-case")) majSel();
-  };
-  $("#h-suppr")?.addEventListener("click", () => {
-    const ids = cases().filter((c) => c.checked).map((c) => c.value);
-    supprimerSessions({ ids }, `Supprimer ${ids.length} ligne(s) de l'historique de ${p.nom} ?`);
-  });
-  $("#h-vider")?.addEventListener("click", () => supprimerSessions({ tout: true }, `Effacer TOUT l'historique de ${p.nom} (${p.sessions.length} lignes) ? C'est définitif.`));
-  app.querySelectorAll("[data-suppr-session]").forEach((b) => b.addEventListener("click", () => supprimerSessions({ ids: [b.dataset.supprSession] }, "Supprimer cette ligne de l'historique ?")));
 
   $("#form-reset").addEventListener("submit", async (e) => {
     e.preventDefault();

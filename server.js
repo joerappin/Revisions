@@ -415,7 +415,7 @@ async function genererLeconPhoto(p, matiere, sujet, fichiers) {
   const reg = reglagesDe(p);
   if (!getClient()) {
     const d = demoRevision(matiere, sujet, reg.nbRevision, pctPour(reg, matiere));
-    d.fiche = { ...d.fiche, titre: "Ta leçon en photo (démo)", intro: "Mode démo : Sensei ne peut pas lire la photo sans clé API. Voici un exemple de leçon et de test. Avec une clé API, la leçon et le test sont créés à partir de ce qui est écrit sur ta photo." };
+    d.fiche = { ...d.fiche, titre: "Ta leçon en photo (démo)", intro: "Mode démo : Sensei ne peut pas lire la photo sans clé API. Voici un exemple de leçon et de révision. Avec une clé API, la leçon et la révision sont créées à partir de ce qui est écrit sur ta photo." };
     return d;
   }
   const n = reg.nbRevision, rep = repartition(n, pctPour(reg, matiere));
@@ -736,8 +736,7 @@ function resumeCompte(p) {
   return {
     id: p.id, nom: p.nom, identifiant: p.identifiant || "", avatar: p.avatar, ecole: p.ecole, ville: p.ville, annee: p.annee,
     matiere: p.matiere, sujet: p.sujet, cree: p.cree, revisions: p.revisions || 0, tests: finals.length,
-    moyenne: finals.length ? Math.round(finals.reduce((a, s) => a + s.pourcentage, 0) / finals.length) : null,
-    meilleur: finals.length ? Math.max(...finals.map((s) => s.pourcentage)) : null,
+    moyenne: (() => { const n = p.sessions.filter((s) => s.type !== "lecon" && Number.isFinite(s.pourcentage)); return n.length ? Math.round(n.reduce((a, s) => a + s.pourcentage, 0) / n.length) : null; })(), // révisions + examens
     dernierResultat: derniere ? { type: derniere.type, sujet: derniere.sujet, matiere: derniere.matiere, pourcentage: derniere.pourcentage, date: derniere.date } : null,
     derniereActivite: derniere?.date || p.derniereConnexion || p.cree,
     photos: p.photos.length,
@@ -856,16 +855,17 @@ async function apiAdmin(req, res, parts) {
   }
   if (parts.length === 3 && m === "GET") return send(res, 200, profilPublic(p));
   // Supprimer des lignes d'historique (leçons, révisions, examens et leurs résultats) : { ids: [...] } ou { tout: true }.
-  if (parts[3] === "sessions" && m === "POST") {
-    const b = await readBody(req);
-    const ids = new Set(Array.isArray(b.ids) ? b.ids.map(String) : []);
-    const retirees = p.sessions.filter((x) => b.tout === true || ids.has(x.id));
-    p.sessions = p.sessions.filter((x) => !retirees.includes(x));
-    p.revisions = Math.max(0, (p.revisions || 0) - retirees.filter((x) => x.type !== "final").length);
-    saveDb();
-    return send(res, 200, { supprimees: retirees.length, profil: profilPublic(p) });
-  }
+  if (parts[3] === "sessions" && m === "POST") return supprimerSessions(res, p, await readBody(req));
   send(res, 404, { erreur: "Route inconnue" });
+}
+
+function supprimerSessions(res, p, b) {
+  const ids = new Set(Array.isArray(b.ids) ? b.ids.map(String) : []);
+  const retirees = p.sessions.filter((x) => b.tout === true || ids.has(x.id));
+  p.sessions = p.sessions.filter((x) => !retirees.includes(x));
+  p.revisions = Math.max(0, (p.revisions || 0) - retirees.filter((x) => x.type !== "final").length);
+  saveDb();
+  return send(res, 200, { supprimees: retirees.length, profil: profilPublic(p) });
 }
 
 async function api(req, res, url) {
@@ -912,6 +912,8 @@ async function api(req, res, url) {
     if (!p || !peutVoir(sess, p.id)) return send(res, sess ? 404 : 401, { erreur: sess ? "Profil introuvable" : "Connecte-toi d'abord." });
 
     if (parts.length === 2 && m === "GET") return send(res, 200, profilPublic(p));
+    // Supprimer des lignes de son historique : { ids: [...] } ou { tout: true }.
+    if (parts[2] === "sessions" && parts.length === 3 && m === "POST") return supprimerSessions(res, p, await readBody(req));
     if (parts.length === 2 && m === "PUT") { Object.assign(p, nettoyerProfil(await readBody(req))); saveDb(); return send(res, 200, profilPublic(p)); }
     if (parts[2] === "avatar" && m === "POST") {
       const b = await readBody(req, 4 * 1024 * 1024);
