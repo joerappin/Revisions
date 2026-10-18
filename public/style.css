@@ -597,3 +597,9 @@ button.btn-indice:hover { transform: translate(-1px, -1px); box-shadow: 3px 3px 
 .barre-selection { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 0 0 10px; }
 .haut-session { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
 .haut-session .pct { position: static; margin-left: auto; }
+
+/* Costumes illustrés */
+.visuel-costume { border: 0; background: none; text-align: center; }
+.visuel-costume img { display: block; margin: 6px auto; width: min(220px, 62%); height: auto; filter: drop-shadow(4px 4px 0 var(--encre)); }
+.galerie-drapeaux:has(figure.costume) { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); max-height: none; }
+.galerie-drapeaux figure.costume img { aspect-ratio: auto; border: 0; object-fit: contain; }

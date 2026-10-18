@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 import Anthropic from "@anthropic-ai/sdk";
 import QRCode from "qrcode";
 import { carteDepuisRequete } from "./carto.js";
+import { COSTUMES, svgCostume } from "./costumes.js";
 import { genererTestGeo } from "./geo-banque.js";
 import { demoRevision, demoFinal, demoDico } from "./demo.js";
 
@@ -244,7 +245,7 @@ const QUESTION = {
     elements: { type: "array", items: { type: "string" }, description: "Type ordre (frise chronologique) : 4 à 6 événements dans le BON ordre chronologique, avec la date entre parenthèses. [] pour les autres types" },
     image_svg: { type: "string", description: "Image SVG autonome nécessaire à la question (tenue d'époque, figure géométrique, schéma…) ou \"\"" },
     indice: { type: "string", description: "Indice qui aide l'élève à trouver SANS donner la réponse (ex. une piste, un repère, la première lettre). \"\" en français et en maths" },
-    image_url: { type: "string", description: "Image fournie par le site, ou \"\" : drapeau « /drapeaux/<code iso2>.svg » (ex. /drapeaux/fr.svg) ou carte « /api/carte?region=<monde|europe|ameriques|afrique>&rouge=<iso2 ou continent>&numeros=<iso2,iso2>&capitales=1&noms=1&continents=1 »" },
+    image_url: { type: "string", description: "Image fournie par le site, ou \"\" : drapeau « /drapeaux/<code iso2>.svg » (ex. /drapeaux/fr.svg) ou carte « /api/carte?region=<monde|europe|ameriques|afrique>&rouge=<iso2 ou continent>&numeros=<iso2,iso2>&capitales=1&noms=1&continents=1 » ou costume « /costumes/<clé>.svg »" },
     enonce: { type: "string" },
     choix: { type: "array", items: { type: "string" }, description: "4 choix courts pour qcm, [\"Vrai\",\"Faux\"] pour vrai_faux, [] pour numerique et ouverte" },
     reponse: { type: "string", description: "Texte exact du bon choix (qcm/vrai_faux), nombre (numerique, point décimal) ou réponse modèle courte (ouverte)" },
@@ -349,7 +350,7 @@ function nettoyerQuestions(qs) {
 // Seules les images du site sont permises : drapeaux et cartes générées.
 function nettoyerUrlImage(u) {
   const s = String(u || "").trim();
-  return /^\/drapeaux\/[a-z]{2}\.svg$/.test(s) || /^\/api\/carte\?[\w=&,.%-]{1,300}$/.test(s) ? s : "";
+  return /^\/drapeaux\/[a-z]{2}\.svg$/.test(s) || /^\/api\/carte\?[\w=&,.%-]{1,300}$/.test(s) || (/^\/costumes\/(\w+)\.svg$/.test(s) && COSTUMES[s.slice(10, -4)]) ? s : "";
 }
 function nettoyerSvg(svg) {
   const s = String(svg || "").trim();
@@ -365,7 +366,7 @@ function consignesQuestions(n, r, matiere) {
 Indice : sauf en français et en maths, donne pour chaque question un indice court qui met sur la piste sans donner la réponse.
 Corrections : l'explication enseigne la règle; si la matière est les maths ou les sciences, "demarche" détaille chaque étape du calcul (une par ligne, avec les nombres réels de la question et une vérification); pour chaque mauvais choix, "explications_choix" dit exactement quelle erreur mène à ce choix (ex. « tu as additionné les dénominateurs »).
 ${estHistoire(matiere) ? `Histoire : inclus au moins 2 frises chronologiques (type "ordre", 4 à 6 événements avec leur date) et des questions avec image (image_svg) : tenues vestimentaires d'époque à identifier, objets, monuments, cartes. Les questions "ordre" comptent dans les questions à choix.` : ""}
-${estGeo(matiere) ? `Géographie : utilise les cartes et drapeaux du site via image_url (cartes réelles de type atlas scolaire) : « quel pays est en rouge ? » (/api/carte?region=europe&rouge=fr), « quel pays porte le numéro 2 ? » (/api/carte?region=afrique&numeros=ng,ke,eg), « à quel pays appartient ce drapeau ? » (/drapeaux/ca.svg), capitales. Régions disponibles : monde (rouge = nom de continent, continents=1), europe, ameriques, afrique. Pour les notions, mets une carte dans visuel_url.` : ""}
+${/histoire|g[ée]ograph|univers social|monde|culture/i.test(matiere) ? `Costumes illustrés disponibles (image_url ou visuel_url « /costumes/<clé>.svg », sans légende sur l'image) : ${Object.entries(COSTUMES).map(([k, c]) => `${k} = ${c.nom}${c.vetement ? " (" + c.vetement + ")" : ""}`).join(" ; ")}. Utilise-les pour les questions « à quelle époque / de quel pays vient ce costume ? ».\n` : ""}${estGeo(matiere) ? `Géographie : utilise les cartes et drapeaux du site via image_url (cartes réelles de type atlas scolaire) : « quel pays est en rouge ? » (/api/carte?region=europe&rouge=fr), « quel pays porte le numéro 2 ? » (/api/carte?region=afrique&numeros=ng,ke,eg), « à quel pays appartient ce drapeau ? » (/drapeaux/ca.svg), capitales. Régions disponibles : monde (rouge = nom de continent, continents=1), europe, ameriques, afrique. Pour les notions, mets une carte dans visuel_url.` : ""}
 ${estMaths(matiere) ? `Maths : les questions ouvertes doivent demander un calcul (l'élève écrit sa démarche ET un résultat final); mets le résultat attendu dans reponse. Utilise image_svg pour les figures géométriques.` : ""}
 ${CONSIGNES_SVG.replace("Pour visuel_svg", "Pour image_svg (et visuel_svg)")}
 ${lang ? `C'est une matière de langue : inclus au moins 2 questions d'écoute avec le champ audio (phrase lue à voix haute à l'élève, l'énoncé dit « Écoute la phrase… »). Ailleurs audio = "".` : `Le champ audio est toujours "".`}`;
@@ -1164,6 +1165,14 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname.startsWith("/api/")) return await api(req, res, url);
     const drapeau = url.pathname.match(/^\/drapeaux\/([a-z]{2})\.svg$/);
     if (drapeau) return serveFile(res, path.join(ROOT, "node_modules/flag-icons/flags/4x3", drapeau[1] + ".svg"), "public, max-age=604800");
+    const costume = url.pathname.match(/^\/costumes\/(\w+)\.svg$/);
+    if (costume) {
+      const svg = svgCostume(costume[1]);
+      if (!svg) return send(res, 404, { erreur: "Costume inconnu" });
+      const gz = accepteGzip(res);
+      res.writeHead(200, { "Content-Type": "image/svg+xml", "Cache-Control": "public, max-age=86400", Vary: "Accept-Encoding", ...(gz ? { "Content-Encoding": "gzip" } : {}) });
+      return res.end(gz ? zlib.gzipSync(svg, { level: 6 }) : svg);
+    }
     if (url.pathname.startsWith("/avatars/")) {
       return serveFile(res, path.join(AVATARS, path.basename(decodeURIComponent(url.pathname))), "public, max-age=31536000, immutable");
     }

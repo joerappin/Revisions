@@ -1,6 +1,7 @@
 // Mode démo : petite banque de questions pour essayer l'application sans clé API.
 import { RENAISSANCE } from "./demo-histoire-geo.js";
 import { banqueGeo } from "./geo-banque.js";
+import { banqueCostumes } from "./costumes-banque.js";
 const q = (type, enonce, choix, reponse, explication, notion, difficulte = "moyen", extra = {}) =>
   ({ type, enonce, choix, indice: "", elements: [], image_svg: "", image_url: "", reponse, reponses_acceptees: [], tolerance: 0, audio: "", explication, demarche: "", explications_choix: [], notion, difficulte, ...extra });
 const VF = ["Vrai", "Faux"];
@@ -183,7 +184,9 @@ const BANQUES = {
 };
 
 function banque(matiere, sujet = "") {
-  if (/renaissance|humanis|tenue|[ée]poque|gutenberg/i.test(sujet)) return RENAISSANCE;
+  if (/renaissance|humanis|gutenberg/i.test(sujet)) return RENAISSANCE;
+  const costumes = banqueCostumes(matiere, sujet); // costumes d'époque ou traditionnels (illustrations)
+  if (costumes) return costumes;
   const geo = banqueGeo(matiere, sujet); // vraies cartes + drapeaux officiels
   if (geo) return geo;
   if (/histoire|univers social/i.test(matiere)) return RENAISSANCE;

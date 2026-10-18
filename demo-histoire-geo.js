@@ -1,4 +1,5 @@
 // Leçon intégrée d'histoire (Renaissance, humanisme, tenues d'époque), avec ses illustrations SVG. Utilisée sans clé API.
+import { svgCostume, plancheCostumes } from "./costumes.js";
 const q = (type, enonce, choix, reponse, explication, notion, difficulte = "moyen", extra = {}) =>
   ({ type, enonce, choix, indice: "", elements: [], image_svg: "", reponse, reponses_acceptees: [], tolerance: 0, audio: "", explication, demarche: "", explications_choix: [], notion, difficulte, ...extra });
 const VF = ["Vrai", "Faux"];
@@ -10,41 +11,12 @@ const svg = (contenu, h = 220, w = 400) =>
 const t = (x, y, txt, extra = "") => `<text x="${x}" y="${y}" ${extra}>${txt}</text>`;
 const PEAU = "#ffe3c8", TRAIT = 'stroke="#111" stroke-width="2.5"';
 
-// ---------- Tenues d'époque (personnage de 100 × 220) ----------
-const tete = (cy = 62) => `<circle cx="50" cy="${cy}" r="13" fill="${PEAU}" ${TRAIT}/><circle cx="45" cy="${cy - 1}" r="1.8" fill="#111"/><circle cx="55" cy="${cy - 1}" r="1.8" fill="#111"/>`;
-const jambes = (c = "#111", y1 = 150, y2 = 205) => `<rect x="40" y="${y1}" width="8" height="${y2 - y1}" fill="${c}" ${TRAIT}/><rect x="52" y="${y1}" width="8" height="${y2 - y1}" fill="${c}" ${TRAIT}/>`;
-const TENUES = {
-  moyenage: { nom: "Moyen Âge (XVe siècle)", desc: "robe longue et hennin pointu",
-    dessin: `<polygon points="40,54 60,54 74,4" fill="#e63946" ${TRAIT}/><path d="M74 4 Q90 40 80 90" fill="none" stroke="#bbb" stroke-width="3"/>
-      <polygon points="37,76 63,76 82,208 18,208" fill="#2b6cff" ${TRAIT}/><rect x="36" y="100" width="28" height="6" fill="#ffd60a" ${TRAIT}/>${tete()}` },
-  renaissance: { nom: "Renaissance (XVIe siècle)", desc: "fraise, pourpoint et chausses bouffantes",
-    dessin: `${jambes("#fff", 145)}<rect x="36" y="200" width="12" height="7" fill="#111"/><rect x="52" y="200" width="12" height="7" fill="#111"/>
-      <ellipse cx="50" cy="140" rx="22" ry="13" fill="#ffd60a" ${TRAIT}/><rect x="34" y="80" width="32" height="56" fill="#e63946" ${TRAIT}/>
-      <circle cx="30" cy="90" r="10" fill="#e63946" ${TRAIT}/><circle cx="70" cy="90" r="10" fill="#e63946" ${TRAIT}/>
-      <ellipse cx="50" cy="77" rx="19" ry="6" fill="#fff" ${TRAIT}/>${tete()}<ellipse cx="50" cy="49" rx="19" ry="6" fill="#111"/><path d="M62 46 Q80 30 86 40" fill="none" stroke="#2bb673" stroke-width="4"/>` },
-  louis14: { nom: "Époque de Louis XIV (XVIIe siècle)", desc: "grande perruque bouclée, justaucorps et talons rouges",
-    dessin: `${jambes("#fff", 160)}<rect x="36" y="200" width="12" height="8" fill="#e63946"/><rect x="52" y="200" width="12" height="8" fill="#e63946"/>
-      <polygon points="33,78 67,78 75,168 25,168" fill="#2b6cff" ${TRAIT}/>${[90, 108, 126, 144].map((y) => `<circle cx="50" cy="${y}" r="3" fill="#ffd60a"/>`).join("")}
-      ${[34, 40, 60, 66, 36, 64].map((x, i) => `<circle cx="${x}" cy="${58 + (i % 3) * 12}" r="9" fill="#7a4a26" ${TRAIT}/>`).join("")}${tete()}<path d="M37 52 Q50 36 63 52" fill="#7a4a26" ${TRAIT}/>` },
-  xviii: { nom: "XVIIIe siècle", desc: "robe à paniers très large et perruque poudrée",
-    dessin: `<ellipse cx="50" cy="168" rx="48" ry="40" fill="#f78fb3" ${TRAIT}/><polygon points="38,78 62,78 56,128 44,128" fill="#f78fb3" ${TRAIT}/>
-      <ellipse cx="50" cy="32" rx="15" ry="26" fill="#eee" ${TRAIT}/>${tete()}` },
-  xix: { nom: "XIXe siècle", desc: "haut-de-forme, redingote et canne",
-    dessin: `${jambes("#444", 160)}<polygon points="34,76 66,76 70,176 30,176" fill="#555" ${TRAIT}/><polygon points="44,76 56,76 50,100" fill="#fff" ${TRAIT}/>
-      <line x1="80" y1="120" x2="80" y2="205" stroke="#7a4a26" stroke-width="4"/>${tete()}<rect x="40" y="20" width="20" height="30" fill="#111"/><rect x="33" y="48" width="34" height="5" fill="#111"/>` },
-  annees20: { nom: "Années 1920", desc: "robe droite courte à franges et chapeau cloche",
-    dessin: `${jambes(PEAU, 150)}<rect x="36" y="76" width="28" height="76" fill="#2bb673" ${TRAIT}/>${[40, 46, 52, 58].map((x) => `<line x1="${x}" y1="150" x2="${x}" y2="162" stroke="#111" stroke-width="2"/>`).join("")}
-      ${[42, 46, 50, 54, 58].map((x) => `<circle cx="${x}" cy="82" r="2" fill="#fff" stroke="#111"/>`).join("")}${tete()}<path d="M35 60 Q50 34 65 60 Z" fill="#8e44ad" ${TRAIT}/>` },
-};
-const tenue = (cle, x = 0, y = 0, k = 1) => `<g transform="translate(${x} ${y}) scale(${k})">${TENUES[cle].dessin}</g>`;
+// ---------- Tenues d'époque : personnages de costumes.js ----------
+const CLE_TENUE = { moyenage: "dame_moyenage", renaissance: "renaissance", louis14: "louis14", xviii: "xviii", xix: "xix", annees20: "annees20" };
 // Image de question : une seule tenue, sans légende.
-const imageTenue = (cle) => svg(`${tenue(cle, 150, 5)}${t(300, 120, "?", 'font-size="60" font-weight="bold" fill="#e63946"')}`, 220);
-const FRISE_TENUES = svg(["moyenage", "renaissance", "louis14", "xviii", "xix", "annees20"].map((c, i) =>
-  tenue(c, 4 + i * 66, 4, 0.62) + t(35 + i * 66, 158, ["XVe", "XVIe", "XVIIe", "XVIIIe", "XIXe", "1920"][i], 'text-anchor="middle" font-weight="bold"')).join("")
-  + `<line x1="10" y1="172" x2="390" y2="172" stroke="#111" stroke-width="3"/><polygon points="390,172 380,166 380,178" fill="#111"/>`
-  + t(200, 196, "Les tenues changent à travers les époques", 'text-anchor="middle" font-weight="bold"'), 210);
+const imageTenue = (cle) => svgCostume(CLE_TENUE[cle]);
+const FRISE_TENUES = plancheCostumes(Object.values(CLE_TENUE), { legende: (c) => c.periode.replace("vers ", ""), avecFleche: true });
 
-// ---------- Frise chronologique de la Renaissance ----------
 const EVTS = [[1450, "Imprimerie (Gutenberg)"], [1453, "Chute de Constantinople"], [1492, "Colomb en Amérique"], [1503, "La Joconde"], [1517, "Réforme (Luther)"], [1534, "Cartier au Canada"], [1543, "Copernic"]];
 const xAn = (a) => 20 + ((a - 1440) / 110) * 360;
 const FRISE_RENAISSANCE = svg(`<rect x="20" y="104" width="360" height="12" fill="#ffd60a" ${TRAIT}/>`
