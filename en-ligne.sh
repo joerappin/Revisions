@@ -25,7 +25,9 @@ SERVEUR=$!
 # Met à jour la page de redirection (GitHub Pages, branche gh-pages)
 PAGE=$(sed "s#__URL__#$URL#g" "$DIR/pages/index.html" | base64)
 SHA=$(gh api "repos/$REPO/contents/index.html?ref=gh-pages" --jq .sha 2>/dev/null)
-gh api -X PUT "repos/$REPO/contents/index.html" -f message="Adresse ReviZ : $URL" -f content="$PAGE" -f branch=gh-pages ${SHA:+-f sha=$SHA} > /dev/null 2>> "$LOG/tunnel.log"
+ARGS=(-X PUT "repos/$REPO/contents/index.html" -f message="Adresse ReviZ : $URL" -f content="$PAGE" -f branch=gh-pages)
+[[ -n "$SHA" ]] && ARGS+=(-f sha="$SHA")
+gh api "${ARGS[@]}" --jq .commit.sha >> "$LOG/tunnel.log" 2>&1 || echo "$(date) échec de la mise à jour du lien GitHub Pages" >> "$LOG/tunnel.log"
 echo "$(date) ReviZ en ligne : $URL" >> "$LOG/tunnel.log"
 
 # Si l'un des deux s'arrête, on arrête tout : launchd relance le script.
