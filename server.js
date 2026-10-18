@@ -6,6 +6,7 @@ import path from "node:path";
 import os from "node:os";
 import crypto from "node:crypto";
 import zlib from "node:zlib";
+import { execFile, execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import Anthropic from "@anthropic-ai/sdk";
 import QRCode from "qrcode";
@@ -22,6 +23,42 @@ const DB_FILE = path.join(DATA, "db.json");
 const CONFIG_FILE = path.join(DATA, "config.json");
 const PORT = Number(process.env.PORT) || 3000;
 const MODEL = "claude-opus-5-5";
+
+// ---------- Données gardées dans un dépôt GitHub privé (hébergement gratuit sans disque) ----------
+// DONNEES_GIT = git@github.com:compte/depot.git, DONNEES_CLE = clé SSH de déploiement (base64).
+// Au démarrage, les données sont récupérées; ensuite chaque changement est envoyé sur GitHub (toutes les 20 s et à l'arrêt).
+let gitEnv = null;
+if (process.env.DONNEES_GIT && process.env.DONNEES_CLE) {
+  const cle = path.join(os.tmpdir(), "reviz-cle-donnees");
+  fs.writeFileSync(cle, Buffer.from(process.env.DONNEES_CLE, "base64").toString("utf8"), { mode: 0o600 });
+  gitEnv = {
+    ...process.env,
+    GIT_SSH_COMMAND: `ssh -i ${cle} -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=${path.join(os.tmpdir(), "reviz-hotes")}`,
+    GIT_AUTHOR_NAME: "ReviZ", GIT_AUTHOR_EMAIL: "reviz@users.noreply.github.com", GIT_COMMITTER_NAME: "ReviZ", GIT_COMMITTER_EMAIL: "reviz@users.noreply.github.com",
+  };
+  // Port 443 : passe partout, même là où le port SSH habituel est fermé.
+  const depot = process.env.DONNEES_GIT.replace(/^git@github\.com:/, "ssh://git@ssh.github.com:443/");
+  if (!fs.existsSync(path.join(DATA, ".git"))) {
+    fs.rmSync(DATA, { recursive: true, force: true });
+    execFileSync("git", ["clone", "-q", depot, DATA], { env: gitEnv, stdio: "inherit" });
+  }
+  console.log("  Données récupérées depuis", process.env.DONNEES_GIT);
+}
+let envoiEnCours = null;
+function sauverSurGit() {
+  if (!gitEnv) return Promise.resolve();
+  return (envoiEnCours ||= new Promise((resolve) => {
+    const script = 'git add -A && (git diff --cached --quiet || (git commit -qm "Sauvegarde ReviZ" && git push -q origin HEAD))';
+    execFile("sh", ["-c", script], { cwd: DATA, env: gitEnv }, (err, _out, e) => {
+      if (err) console.error("Sauvegarde GitHub impossible :", String(e || err.message).trim());
+      envoiEnCours = null; resolve();
+    });
+  }));
+}
+if (gitEnv) {
+  setInterval(sauverSurGit, 20e3);
+  for (const sig of ["SIGTERM", "SIGINT"]) process.on(sig, async () => { await sauverSurGit(); process.exit(0); });
+}
 
 const AVATARS = path.join(DATA, "avatars"); // photos de profil (nom aléatoire, affichées aussi sur le téléphone-télécommande)
 for (const d of [DATA, PHOTOS, CACHE, AVATARS]) fs.mkdirSync(d, { recursive: true });
@@ -774,6 +811,7 @@ async function apiAdmin(req, res, parts) {
     const parcourir = (dossier) => {
       for (const f of fs.readdirSync(dossier, { withFileTypes: true })) {
         const abs = path.join(dossier, f.name), rel = path.relative(DATA, abs);
+        if (f.name === ".git") continue;
         if (f.isDirectory()) parcourir(abs);
         else if (!/^sessions\.json$|\.(log|tmp)$/.test(rel)) fichiers[rel] = fs.readFileSync(abs).toString("base64");
       }
@@ -788,7 +826,7 @@ async function apiAdmin(req, res, parts) {
     let n = 0;
     for (const [rel, contenu] of Object.entries(b.fichiers)) {
       const abs = path.resolve(DATA, rel);
-      if (!abs.startsWith(path.resolve(DATA) + path.sep) || /sessions\.json$/.test(rel) || typeof contenu !== "string") continue;
+      if (!abs.startsWith(path.resolve(DATA) + path.sep) || /sessions\.json$|(^|[\\/])\.git([\\/]|$)/.test(rel) || typeof contenu !== "string") continue;
       fs.mkdirSync(path.dirname(abs), { recursive: true });
       fs.writeFileSync(abs, Buffer.from(contenu, "base64")); n++;
     }
@@ -849,6 +887,7 @@ async function api(req, res, url) {
     return res.end(svg);
   }
   if (parts[0] === "status") {
+    res.setHeader("Access-Control-Allow-Origin", "*"); // la page d'accès (GitHub Pages) vérifie que le serveur est réveillé
     return send(res, 200, { ia: !!apiKey(), cleEnv: !!process.env.ANTHROPIC_API_KEY, adresses: URL_PUBLIQUE ? [URL_PUBLIQUE] : lanAddresses().map((a) => `http://${a}:${PORT}`) });
   }
   if (parts[0] === "config" && m === "POST") {

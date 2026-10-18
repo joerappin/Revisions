@@ -1,23 +1,20 @@
-# Déploiement en un clic sur Render : https://render.com/deploy?repo=https://github.com/joerappin/Revisions
+# ReviZ sur Render, offre gratuite. Les comptes et la progression sont gardés dans le dépôt privé
+# joerappin/ReviZ-donnees, car le disque de l'offre gratuite est effacé à chaque redémarrage.
 services:
   - type: web
     name: reviz
     runtime: node
-    plan: starter            # le plan gratuit n'a pas de disque : les comptes seraient effacés à chaque redémarrage
+    plan: free
     region: ohio
-    buildCommand: npm ci
+    buildCommand: npm ci --omit=dev
     startCommand: node server.js
     healthCheckPath: /api/status
-    disk:
-      name: reviz-data
-      mountPath: /var/data   # comptes, progression, photos, leçons (gardés entre les mises à jour)
-      sizeGB: 1
     envVars:
       - key: REVIZ_DATA
-        value: /var/data
-      - key: ADMIN_EMAIL
-        sync: false          # demandé au déploiement
-      - key: ADMIN_PASSWORD
-        sync: false
+        value: /tmp/reviz-data
+      - key: DONNEES_GIT
+        value: git@github.com:joerappin/ReviZ-donnees.git
+      - key: DONNEES_CLE
+        sync: false          # clé SSH de déploiement (base64), jamais dans le dépôt public
       - key: ANTHROPIC_API_KEY
         sync: false          # facultatif (sinon : mode démo, ou clé collée dans Admin)

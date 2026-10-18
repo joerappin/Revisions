@@ -4,7 +4,6 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ReviZ</title>
-<meta http-equiv="refresh" content="0; url=__URL__/">
 <style>
   :root { --fond: #fffbe8; --encre: #111; --rouge: #e63946; }
   @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --fond: #1b1b1f; --encre: #f5f5f5; } }
@@ -23,6 +22,19 @@
   <p><a id="lien" href="__URL__/">Entrer dans ReviZ ▶</a></p>
   <p style="font-size:14px;opacity:.7">Si la page ne s'ouvre pas, l'ordinateur qui héberge ReviZ est peut-être éteint.</p>
 </main>
-<script>location.replace("__URL__/" + location.hash);</script>
+<script>
+  // Le serveur gratuit s'endort quand personne ne l'utilise : on attend qu'il se réveille (jusqu'à une minute).
+  const cible = "__URL__";
+  const msg = document.querySelector("main p");
+  const essai = async (n) => {
+    try {
+      const r = await fetch(cible + "/api/status", { cache: "no-store" });
+      if (r.ok) return location.replace(cible + "/" + location.hash);
+    } catch {}
+    if (n === 2) msg.textContent = "Réveil du serveur… (jusqu'à une minute la première fois)";
+    setTimeout(() => essai(n + 1), 3000);
+  };
+  essai(0);
+</script>
 </body>
 </html>
