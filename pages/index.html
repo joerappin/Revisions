@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ReviZ</title>
+<meta http-equiv="refresh" content="0; url=__URL__/">
+<style>
+  :root { --fond: #fffbe8; --encre: #111; --rouge: #e63946; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --fond: #1b1b1f; --encre: #f5f5f5; } }
+  :root[data-theme="dark"] { --fond: #1b1b1f; --encre: #f5f5f5; }
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 16px; box-sizing: border-box;
+    background: var(--fond); color: var(--encre); font: 18px/1.5 system-ui, sans-serif; text-align: center; }
+  h1 { font-size: 48px; margin: 0 0 8px; }
+  a { display: inline-block; padding: 12px 22px; border: 3px solid var(--encre); border-radius: 12px;
+    background: var(--rouge); color: #fff; font-weight: 700; text-decoration: none; box-shadow: 4px 4px 0 var(--encre); }
+</style>
+</head>
+<body>
+<main>
+  <h1>ReviZ ⚡</h1>
+  <p>Ouverture du site de révision…</p>
+  <p><a id="lien" href="__URL__/">Entrer dans ReviZ ▶</a></p>
+  <p style="font-size:14px;opacity:.7">Si la page ne s'ouvre pas, l'ordinateur qui héberge ReviZ est peut-être éteint.</p>
+</main>
+<script>location.replace("__URL__/" + location.hash);</script>
+</body>
+</html>
