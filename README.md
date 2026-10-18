@@ -12,7 +12,16 @@ npm start
 Le terminal affiche l'adresse à ouvrir, par ex. `http://192.168.2.114:3000`, sur la tablette, le téléphone ou l'ordinateur de l'ado.
 (Au premier lancement, macOS peut demander d'autoriser « node » à accepter les connexions entrantes : clique sur **Autoriser**.)
 
-## Mettre ReviZ en ligne (vraie adresse internet)
+## ReviZ en ligne gratuitement (lien fixe)
+
+**https://joerappin.github.io/Revisions/** ouvre ReviZ depuis n'importe où.
+
+- Le site tourne sur le Mac (copie dans `~/ReviZ`, données dans `~/ReviZ/data`), lancé automatiquement à l'ouverture de session par `~/Library/LaunchAgents/com.reviz.enligne.plist`, qui exécute `en-ligne.sh`.
+- `en-ligne.sh` récupère la dernière version sur GitHub, empêche la veille, ouvre un tunnel Cloudflare gratuit et met à jour la page GitHub Pages (branche `gh-pages`) avec l'adresse du tunnel.
+- Le Mac doit rester allumé (couvercle ouvert ou branché sur un écran).
+- Relancer : `launchctl kickstart -k gui/$(id -u)/com.reviz.enligne` ; arrêter : `launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.reviz.enligne.plist`.
+
+## Mettre ReviZ en ligne sans le Mac (Render, payant)
 
 Le site tourne sur [Render](https://render.com) grâce au fichier `render.yaml` :
 
