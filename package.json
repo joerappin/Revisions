@@ -1,7 +1,7 @@
 {
   "name": "reviz",
   "version": "1.0.0",
-  "description": "ReviZ — module de révision style manga pour élèves du Québec, accessible sur le Wi-Fi local",
+  "description": "ReviZ — module de révision style manga pour élèves du Québec (en ligne ou sur le Wi-Fi local)",
   "main": "server.js",
   "scripts": {
     "start": "node --env-file-if-exists=.env server.js"
@@ -11,6 +11,14 @@
   "license": "ISC",
   "type": "module",
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.134.0"
+    "@anthropic-ai/sdk": "^0.134.0",
+    "d3-geo": "^3.1.1",
+    "flag-icons": "^7.2.3",
+    "qrcode": "^1.5.4",
+    "topojson-client": "^3.1.0",
+    "world-atlas": "^2.0.2"
+  },
+  "engines": {
+    "node": ">=24"
   }
 }

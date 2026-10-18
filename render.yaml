@@ -1,0 +1,23 @@
+# Déploiement en un clic sur Render : https://render.com/deploy?repo=https://github.com/joerappin/Revisions
+services:
+  - type: web
+    name: reviz
+    runtime: node
+    plan: starter            # le plan gratuit n'a pas de disque : les comptes seraient effacés à chaque redémarrage
+    region: ohio
+    buildCommand: npm ci
+    startCommand: node server.js
+    healthCheckPath: /api/status
+    disk:
+      name: reviz-data
+      mountPath: /var/data   # comptes, progression, photos, leçons (gardés entre les mises à jour)
+      sizeGB: 1
+    envVars:
+      - key: REVIZ_DATA
+        value: /var/data
+      - key: ADMIN_EMAIL
+        sync: false          # demandé au déploiement
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false          # facultatif (sinon : mode démo, ou clé collée dans Admin)

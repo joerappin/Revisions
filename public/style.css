@@ -158,8 +158,10 @@ textarea { min-height: 110px; resize: vertical; }
 .historique th, .historique td { border-bottom: 2px solid var(--encre); padding: 6px 4px; text-align: left; }
 .historique th { font-family: var(--titre); letter-spacing: .05em; font-weight: 400; }
 .badge { display: inline-block; font-weight: 700; font-size: .8rem; padding: 1px 7px; border: 2px solid var(--encre); }
-.badge.final { background: var(--rouge); color: var(--blanc); }
-.badge.revision { background: var(--jaune); }
+/* mêmes couleurs que le graphique : révision violet, examen bleu */
+.badge.final { background: #2b6cff; color: var(--blanc); }
+.badge.revision { background: #8e44ad; color: var(--blanc); }
+.badge.tag { background: var(--jaune); }
 .table-scroll { overflow-x: auto; }
 .mission { display: grid; gap: 12px; grid-template-columns: 1fr 1fr; }
 @media (max-width: 600px) { .mission { grid-template-columns: 1fr; } }
@@ -256,6 +258,10 @@ textarea { min-height: 110px; resize: vertical; }
 .vide { color: var(--gris); font-style: italic; }
 .galerie .vide { grid-column: 1 / -1; }
 .graph { width: 100%; height: auto; display: block; }
+.legende-graph { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: .9rem; font-weight: 700; margin-bottom: 6px; }
+.legende-graph span { display: inline-flex; align-items: center; gap: 6px; }
+.pt-graph { cursor: help; }
+.pt-graph:hover circle:last-child, .pt-graph:hover rect { stroke: #111; }
 
 /* ---------- Liste de sujets défilante ---------- */
 .combo input { padding-right: 52px; }
@@ -378,7 +384,7 @@ body.ui-mobile input, body.ui-mobile select { font-size: 16px; padding: 12px; } 
 .carte-compte { display: flex; gap: 12px; text-decoration: none; color: inherit; }
 .tabbar {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
-  display: grid; grid-template-columns: repeat(4, 1fr);
+  display: grid; grid-template-columns: repeat(5, 1fr);
   background: var(--encre); border-top: 4px solid var(--jaune);
   padding-bottom: env(safe-area-inset-bottom);
 }
@@ -424,4 +430,144 @@ body.modal-ouvert { overflow: hidden; }
 body.ui-mobile .btn-dico { font-size: .95rem; padding: 3px 7px; }
 body.ui-mobile .modal-fond { padding: 10px; }
 
+
+/* ---------- Page leçon : onglets ---------- */
+.badge.lecon { background: var(--bleu); color: var(--blanc); }
+.onglets-lecon { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; margin: -4px 0 22px; border: 4px solid var(--encre); box-shadow: 6px 6px 0 var(--encre); }
+.onglets-lecon a {
+  text-align: center; text-decoration: none; padding: 12px 6px;
+  font-family: var(--titre); font-size: 1.35rem; letter-spacing: .05em;
+  background: var(--blanc); color: var(--encre); border-right: 4px solid var(--encre);
+}
+.onglets-lecon a:last-child { border-right: 0; }
+.onglets-lecon a.actif { background: var(--jaune); }
+.onglets-lecon a:not(.actif):hover { background: #fff6c7; }
+body.ui-mobile .onglets-lecon a { font-size: 1.05rem; padding: 10px 2px; }
+.vignette { width: 70px; height: 70px; object-fit: cover; border: 3px solid var(--encre); flex: 0 0 70px; }
+.tel-centre .tel-gros + .tel-gros { margin-top: 4px; }
+.tel-label { display: block; text-align: center; }
+.tel-label.inactif { opacity: .4; pointer-events: none; }
+#tel-ouvrir-photo { margin-top: 8px; }
+
+/* ---------- Leçon en diapositives ---------- */
+.diapo-progres { height: 14px; border: 3px solid var(--encre); background: var(--blanc); margin-bottom: 8px; }
+.diapo-progres div { height: 100%; background: repeating-linear-gradient(45deg, var(--rouge) 0 10px, #c62f3b 10px 20px); transition: width .3s; }
+.diapo-points { display: flex; gap: 6px; justify-content: center; margin-bottom: 16px; flex-wrap: wrap; }
+.diapo-points span { width: 14px; height: 14px; border: 2px solid var(--encre); border-radius: 50%; background: var(--blanc); }
+.diapo-points span.lu { background: var(--encre); }
+.diapo-points span.ici { background: var(--jaune); transform: scale(1.3); }
+.diapo { min-height: 340px; animation: glisse .25s ease-out; }
+@keyframes glisse { from { opacity: 0; transform: translateX(24px); } }
+.diapo .gros-texte { font-size: 1.15rem; }
+.diapo .titre-notion { color: var(--rouge); font-size: 2rem; }
+.diapo .visuel { max-width: 560px; margin: 14px auto; }
+.diapo-nav { display: flex; justify-content: space-between; align-items: center; gap: 14px; margin-bottom: 22px; }
+.diapo-nav .btn { min-width: 160px; }
+.diapo-compteur { font-family: var(--titre); font-size: 1.4rem; align-self: center; }
+body.ui-mobile .diapo-nav .btn { min-width: 0; flex: 1; }
+.verrou { position: relative; opacity: .75; background-image: repeating-linear-gradient(-45deg, transparent 0 14px, rgba(0,0,0,.05) 14px 28px); }
+
+/* ---------- Corrections détaillées ---------- */
+.correction { border: 3px solid var(--encre); border-left-width: 10px; padding: 12px 14px; margin: 12px 0; background: var(--blanc); }
+.correction.juste { border-left-color: var(--vert); }
+.correction.faux { border-left-color: var(--rouge); }
+.feedback .correction { margin-top: 0; }
+.lignes-rep { display: grid; gap: 4px; margin: 6px 0; }
+.lignes-rep[hidden] { display: none; }
+#contenu-onglet, #lp-diapos { scroll-margin-top: 80px; }
+.bloc-faux { background: #ffe3e6; border: 2px solid var(--rouge); padding: 8px 10px; margin-top: 8px; }
+.bloc-expl { background: #e8f0ff; border: 2px solid var(--bleu); padding: 8px 10px; margin-top: 8px; }
+.bloc-demarche { background: #fff6c7; border: 2px dashed var(--encre); padding: 8px 10px; margin-top: 8px; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: .95rem; }
+.bloc-demarche strong, .bloc-demarche summary { font-family: var(--texte); cursor: pointer; }
+.choix-revus { list-style: none; padding: 0; margin: 6px 0; display: grid; gap: 4px; }
+.choix-revus li { border: 2px solid #ccc; padding: 4px 10px; }
+.choix-revus li.bon { border-color: var(--vert); background: #c9f2dc; font-weight: 700; }
+.choix-revus li.mauvais { border-color: var(--rouge); background: #ffd0d4; text-decoration: line-through; }
+
+/* ---------- Filtres et « Mes leçons » ---------- */
+.filtres { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.puce.actif { background: var(--encre); color: var(--jaune); }
+.grille-lecons { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+.carte-lecon { border: 3px solid var(--encre); box-shadow: 4px 4px 0 var(--encre); padding: 12px 14px; background: var(--blanc); }
+.carte-lecon h3 { margin: 6px 0; font-size: 1.5rem; }
+.carte-lecon.non-lue { background: #f3f0e6; }
+.btn-lecons { font-family: var(--titre); letter-spacing: .05em; font-size: 1.05rem !important; text-decoration: none; padding: 3px 10px; border: 2px solid var(--blanc); background: var(--rouge); }
+body.ui-mobile .tabbar a { font-size: .8rem; }
+body.ui-mobile .tabbar a span { font-size: 1.3rem; }
+
+/* ---------- Frise chronologique, calcul, demi-points ---------- */
+.frise-reponse { counter-reset: f; list-style: none; padding: 0; margin: 10px 0; display: grid; gap: 6px; min-height: 30px; }
+.frise-reponse li { counter-increment: f; border: 3px solid var(--encre); background: var(--jaune); padding: 6px 10px 6px 42px; position: relative; font-weight: 700; }
+.frise-reponse li::before { content: counter(f); position: absolute; left: 0; top: 0; bottom: 0; width: 32px; display: grid; place-items: center; background: var(--encre); color: var(--jaune); font-family: var(--titre); }
+.frise-reponse li.vide { background: none; border-style: dashed; color: var(--gris); font-weight: 400; }
+.frise-reponse li.vide::before { content: ""; background: none; }
+.frise-reponse li.bon { background: #c9f2dc; }
+.frise-reponse li.mauvais { background: #ffd0d4; }
+.frise-choix { display: flex; flex-wrap: wrap; gap: 10px; }
+.frise-choix button { font: inherit; font-weight: 700; border: 3px solid var(--encre); background: var(--blanc); box-shadow: 3px 3px 0 var(--encre); padding: 8px 12px; cursor: pointer; }
+.frise-choix button:disabled { opacity: .3; box-shadow: none; }
+.tel-frise-choix { flex-direction: column; margin-bottom: 12px; }
+.tel-frise-choix button { min-height: 56px; text-align: left; }
+.frises-comparees { gap: 12px; margin: 6px 0; }
+.zone-calcul { font-family: ui-monospace, "SF Mono", Menlo, monospace; min-height: 110px; background: #fffdf3; }
+.champ-resultat { font-weight: 700; font-size: 1.2rem; border-color: var(--vert); }
+.bloc-calcul { background: #fffdf3; border: 2px solid var(--encre); padding: 8px 10px; margin-top: 8px; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: .95rem; }
+.bloc-calcul strong { font-family: var(--texte); }
+.bloc-demi { background: #fff3cd; border: 2px solid #e8a400; padding: 8px 10px; margin-top: 8px; font-weight: 700; }
+.correction.demi { border-left-color: #e8a400; }
+.badge-points { font-family: var(--titre); font-size: .95rem; background: var(--encre); color: var(--jaune); padding: 1px 8px; white-space: nowrap; }
+.avatar-photo { object-fit: cover; border-radius: 50%; }
+
+/* ---------- Cartes et drapeaux ---------- */
+.visuel-carte { position: relative; background: #bfe3f5; }
+.visuel-carte img { display: block; width: 100%; height: auto; max-height: 72vh; object-fit: contain; margin: 0 auto; }
+.panel > .visuel-carte img { max-height: 52vh; } /* dans une question : les choix restent visibles */
+.visuel-carte .zoom { display: block; text-align: right; background: var(--blanc); font-size: .75rem; padding: 2px 6px; border-top: 1px solid var(--encre); }
+.visuel-drapeau { border: 0; background: none; text-align: center; }
+.visuel-drapeau img { display: block; margin: 6px auto; width: min(320px, 80%); height: auto; border: 3px solid var(--encre); box-shadow: 4px 4px 0 var(--encre); }
+.galerie-drapeaux { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 12px; margin: 12px 0; max-height: 52vh; overflow-y: auto; padding: 4px; }
+.galerie-drapeaux figure { margin: 0; text-align: center; }
+.galerie-drapeaux img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border: 2px solid var(--encre); }
+.galerie-drapeaux figcaption { font-size: .78rem; font-weight: 700; line-height: 1.2; margin-top: 3px; }
+.tableau-lecon { max-height: 50vh; }
+.diapo .table-scroll { max-height: 50vh; overflow-y: auto; }
+
+/* ---------- Test de cartes / drapeaux ---------- */
+.options-geo .opt-groupe { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin: 8px 0; }
+.options-geo .opt-groupe > strong { min-width: 90px; font-family: var(--titre); letter-spacing: .04em; font-weight: 400; font-size: 1.15rem; }
+.options-geo .opt { display: inline-flex; align-items: center; gap: 6px; margin: 0; font-weight: 700; background: var(--blanc); border: 2px solid var(--encre); padding: 6px 10px; cursor: pointer; }
+.options-geo .opt:has(input:checked) { background: var(--jaune); box-shadow: 3px 3px 0 var(--encre); }
+.options-geo input { width: 18px; height: 18px; margin: 0; accent-color: var(--rouge); }
+.carte-interactive { border: 3px solid var(--encre); background: #bfe3f5; margin: 12px 0; line-height: 0; touch-action: pinch-zoom; }
+.carte-interactive svg { width: 100%; height: auto; max-height: 62vh; display: block; }
+.carte-interactive [data-nom] { cursor: pointer; transition: fill .1s; }
+.carte-interactive path[data-nom]:hover { fill: #ffe08a; }
+.carte-interactive circle[data-nom]:hover { fill: #ffe08a; fill-opacity: .8; }
+.carte-interactive .choisie { fill: #ffd60a !important; fill-opacity: 1 !important; stroke: #111; stroke-width: 1.6; }
+.carte-interactive .bonne { fill: #1e9e5a !important; fill-opacity: 1 !important; }
+.carte-interactive .mauvaise { fill: #e63946 !important; fill-opacity: 1 !important; }
+.tel-carte svg { max-height: 58vh; }
+.bloc-carte-correction { margin-top: 8px; }
+.bloc-carte-correction .visuel-carte img { max-height: 40vh; }
+
+/* ---------- QR code ---------- */
+.qr { background: var(--blanc); padding: 8px; border: 4px solid var(--jaune); flex: 0 0 auto; line-height: 0; }
+.qr img { width: 150px; height: 150px; image-rendering: pixelated; }
+
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+.legende-graph .seuil { font-weight: 400; color: var(--gris); }
+.diapo .visuel-carte { max-width: 100%; }
+.diapo .visuel-carte img { max-height: none; } /* leçon : carte en grand, noms lisibles */
+
+/* Orthographe, indices, anti-triche */
+.bloc-ortho { margin: 8px 0; padding: 8px 12px; border: 2px solid #111; border-radius: 10px; background: #fff4c2; }
+.bloc-indice { margin: 8px 0; padding: 8px 12px; border: 2px dashed #2b6cff; border-radius: 10px; background: #eef4ff; color: #111; }
+.bloc-triche { margin: 8px 0; padding: 8px 12px; border: 2px solid #c0392b; border-radius: 10px; background: #fdecea; color: #111; }
+.btn-indice { display: inline-grid; place-items: center; width: 26px; height: 26px; margin-left: 6px; vertical-align: middle;
+  border: 2px solid #111; border-radius: 50%; background: #2b6cff; color: #fff; font: italic 700 15px Georgia, serif; cursor: pointer; box-shadow: 2px 2px 0 #111; }
+button.btn-indice:hover { transform: translate(-1px, -1px); box-shadow: 3px 3px 0 #111; }
+.btn-indice.utilise { background: #8e44ad; }
+#tel-indice .btn-indice { margin: 0 4px 0 0; width: 22px; height: 22px; font-size: 13px; box-shadow: none; }
+.popup-triche { max-width: 460px; text-align: center; border-color: #c0392b; }
+.popup-triche h2 { color: #c0392b; }
+.popup-triche .actions { justify-content: center; }

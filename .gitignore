@@ -4,3 +4,6 @@ data/
 .env
 .claude/
 .DS_Store
+
+# Sauvegardes téléchargées depuis l’admin (contiennent les comptes)
+reviz-sauvegarde-*.json
