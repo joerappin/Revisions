@@ -67,7 +67,7 @@ Pour que Sensei cherche sur internet et crée les fiches et les tests sur n'impo
    - Réponses écrites : les fautes d'orthographe (accents, « s » final, petite faute de frappe) sont **acceptées mais signalées**, avec la bonne orthographe (« ✏️ on écrit … »). En français, l'orthographe reste évaluée.
    - **Bouton ⓘ indice** à côté de chaque question (toutes les matières sauf le français et les maths), aussi sur le téléphone-télécommande. La correction indique si l'indice a été utilisé.
    - **Anti-triche** : changer d'onglet pendant une question ouvre une fenêtre « l'aide externe n'est pas permise » ; la réponse est comptée fausse et on passe à la question suivante.
-7. **Progrès** (élève et admin) : filtres par **matière** (code couleur par matière) et par **type** (leçons, révisions, examens), **moyenne globale** et **moyenne par matière** (révisions et examens), graphique, puis un **historique unique** avec cases à cocher (supprimer la sélection) et corbeille en fin de ligne.
+7. **Progrès** (élève et admin) : filtres par **matière** (code couleur par matière) et par **type** (leçons, révisions, examens), **moyenne globale** et **moyenne par matière** (révisions et examens), graphique, puis un **historique unique** ; pour l’admin seulement : cases à cocher (supprimer la sélection) et corbeille en fin de ligne.
 8. **📚 Mes leçons** : toutes les leçons apprises, avec filtres par matière (lue combien de fois, révisions, examens, meilleurs scores) et accès direct pour les revoir. Les statistiques et l'historique du compte ont aussi des filtres par matière.
 9. **📖 Dico (anglais)** : quand la matière est l'anglais, un bouton « Dico » apparaît en haut : traduction, prononciation, exemples en anglais et en français, synonymes.
 

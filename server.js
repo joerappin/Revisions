@@ -912,8 +912,11 @@ async function api(req, res, url) {
     if (!p || !peutVoir(sess, p.id)) return send(res, sess ? 404 : 401, { erreur: sess ? "Profil introuvable" : "Connecte-toi d'abord." });
 
     if (parts.length === 2 && m === "GET") return send(res, 200, profilPublic(p));
-    // Supprimer des lignes de son historique : { ids: [...] } ou { tout: true }.
-    if (parts[2] === "sessions" && parts.length === 3 && m === "POST") return supprimerSessions(res, p, await readBody(req));
+    // Supprimer des lignes d'historique : réservé à l'admin.
+    if (parts[2] === "sessions" && parts.length === 3 && m === "POST") {
+      if (!sess?.admin) return send(res, 403, { erreur: "Seul l'admin peut supprimer des lignes de l'historique." });
+      return supprimerSessions(res, p, await readBody(req));
+    }
     if (parts.length === 2 && m === "PUT") { Object.assign(p, nettoyerProfil(await readBody(req))); saveDb(); return send(res, 200, profilPublic(p)); }
     if (parts[2] === "avatar" && m === "POST") {
       const b = await readBody(req, 4 * 1024 * 1024);

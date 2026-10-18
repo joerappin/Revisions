@@ -916,14 +916,15 @@ function contenuProgres(p) {
         </button>`).join("")}</div>
     </div>`;
   const hist = [...choisies].reverse();
+  const admin = !!etat.moi.admin; // seul l'admin peut supprimer des lignes
   const resultat = (x) => (x.type === "lecon" ? "📖 lue" : `<strong class="${x.pourcentage >= 60 ? "ok" : "ko"}">${x.pourcentage} %</strong> <span class="aide">(${fmtPoints(x.score)}/${x.total})</span>`);
   const revoir = (x) => (x.details?.length ? `<a class="btn blanc petit" href="#/profil/${p.id}/evaluation/${x.id}">👁 Revoir</a>` : "");
-  const corbeille = (x) => `<button type="button" class="btn-corbeille" data-pf-suppr="${x.id}" title="Supprimer cette ligne" aria-label="Supprimer cette ligne">🗑</button>`;
-  const caseL = (x) => `<input type="checkbox" class="pf-case" value="${x.id}" aria-label="Sélectionner cette ligne">`;
+  const corbeille = (x) => !admin ? "" : `<button type="button" class="btn-corbeille" data-pf-suppr="${x.id}" title="Supprimer cette ligne" aria-label="Supprimer cette ligne">🗑</button>`;
+  const caseL = (x) => !admin ? "" : `<input type="checkbox" class="pf-case" value="${x.id}" aria-label="Sélectionner cette ligne">`;
   const lignes = !hist.length ? `<p class="vide">${p.sessions.length ? "Rien pour ce filtre." : "Aucun résultat pour l'instant. Lance ta première révision !"}</p>` : `
     <div class="barre-selection">
-      <label class="case" style="margin:0"><input type="checkbox" id="pf-tout"> Tout cocher</label>
-      <button type="button" class="btn rouge petit" id="pf-suppr" disabled>🗑 Supprimer la sélection</button>
+      ${admin ? `<label class="case" style="margin:0"><input type="checkbox" id="pf-tout"> Tout cocher</label>
+      <button type="button" class="btn rouge petit" id="pf-suppr" disabled>🗑 Supprimer la sélection</button>` : ""}
       <span class="aide">${hist.length} ligne${hist.length > 1 ? "s" : ""}</span>
     </div>
     ${etat.mobile
@@ -931,10 +932,10 @@ function contenuProgres(p) {
           <div class="haut-session">${caseL(x)}<span class="badge ${x.type}">${libType(x)}</span><strong class="pct">${x.type === "lecon" ? "📖" : x.pourcentage + " %"}</strong>${corbeille(x)}</div>
           <div>${esc(x.sujet)}</div><div class="aide">${esc(x.matiere)} · ${fmtDate(x.date)}${x.type === "lecon" ? "" : ` · ${fmtPoints(x.score)}/${x.total}`}</div>${revoir(x)}</div>`).join("")}</div>`
       : `<div class="table-scroll"><table class="historique">
-          <thead><tr><th></th><th>Date</th><th>Type</th><th>Matière</th><th>Leçon</th><th>Résultat</th><th></th><th></th></tr></thead>
+          <thead><tr>${admin ? "<th></th>" : ""}<th>Date</th><th>Type</th><th>Matière</th><th>Leçon</th><th>Résultat</th><th></th>${admin ? "<th></th>" : ""}</tr></thead>
           <tbody>${hist.map((x) => `<tr class="ligne-matiere" style="--c:${couleurMatiere(x.matiere)}">
-            <td>${caseL(x)}</td><td>${fmtDate(x.date)}</td><td><span class="badge ${x.type}">${libType(x)}</span></td>
-            <td>${badgeMatiere(x.matiere)}</td><td>${esc(x.sujet)}</td><td>${resultat(x)}</td><td>${revoir(x)}</td><td>${corbeille(x)}</td></tr>`).join("")}</tbody></table></div>`}`;
+            ${admin ? `<td>${caseL(x)}</td>` : ""}<td>${fmtDate(x.date)}</td><td><span class="badge ${x.type}">${libType(x)}</span></td>
+            <td>${badgeMatiere(x.matiere)}</td><td>${esc(x.sujet)}</td><td>${resultat(x)}</td><td>${revoir(x)}</td>${admin ? `<td>${corbeille(x)}</td>` : ""}</tr>`).join("")}</tbody></table></div>`}`;
   return filtres + S.stats({ ...p, sessions: dansMatiere }) + moyennes + `
     <div class="panel"><span class="etiquette">PROGRESSION${fm ? " · " + esc(fm).toUpperCase() : ""}</span>
       ${ft === "lecon" ? "" : graphique(choisies)}
