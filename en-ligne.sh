@@ -11,7 +11,8 @@ git pull -q --ff-only origin main 2>> "$LOG/tunnel.log"
 [[ ! -d node_modules || "$AVANT" != "$(git rev-parse HEAD:package-lock.json)" ]] && npm ci --omit=dev --silent
 
 /usr/bin/caffeinate -i -w $$ &                      # le Mac ne se met pas en veille tant que ReviZ tourne
-cloudflared tunnel --no-autoupdate --url http://localhost:3000 > "$LOG/tunnel.log" 2>&1 &
+: > "$LOG/tunnel.log"
+cloudflared tunnel --no-autoupdate --url http://localhost:3000 >> "$LOG/tunnel.log" 2>&1 &   # >> : les lignes ajoutées ensuite ne sont pas écrasées
 TUNNEL=$!
 for i in {1..60}; do
   URL=$(grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' "$LOG/tunnel.log" | head -1)
