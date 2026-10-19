@@ -796,8 +796,10 @@ async function apiAdmin(req, res, parts) {
   if (parts[1] === "connexion" && m === "POST") {
     if (bloque(req)) return send(res, 429, { erreur: "Trop d'essais. Réessaie dans quelques minutes." });
     const b = await readBody(req);
-    const emailOk = !config.admin?.email || normIdentifiant(b.email) === config.admin.email;
-    if (!emailOk || !verifier(b.motDePasse, config.admin)) { echec(req); return send(res, 401, { erreur: "Courriel ou mot de passe admin incorrect." }); }
+    // Admin principal (config.admin) + admins supplémentaires (config.autresAdmins), chacun avec son courriel.
+    const email = normIdentifiant(b.email);
+    const compte = [config.admin, ...(config.autresAdmins || [])].find((a) => a && (a.email ? a.email === email : a === config.admin));
+    if (!compte || !verifier(b.motDePasse, compte)) { echec(req); return send(res, 401, { erreur: "Courriel ou mot de passe admin incorrect." }); }
     ouvrirSession(res, { admin: true }, req);
     return send(res, 200, { admin: true });
   }
