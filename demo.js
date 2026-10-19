@@ -2,6 +2,7 @@
 import { RENAISSANCE } from "./demo-histoire-geo.js";
 import { banqueGeo } from "./geo-banque.js";
 import { banqueCostumes } from "./costumes-banque.js";
+import { banqueCCQ, estCCQ } from "./ccq-banque.js";
 const q = (type, enonce, choix, reponse, explication, notion, difficulte = "moyen", extra = {}) =>
   ({ type, enonce, choix, indice: "", elements: [], image_svg: "", image_url: "", reponse, reponses_acceptees: [], tolerance: 0, audio: "", explication, demarche: "", explications_choix: [], notion, difficulte, ...extra });
 const VF = ["Vrai", "Faux"];
@@ -184,6 +185,7 @@ const BANQUES = {
 };
 
 function banque(matiere, sujet = "") {
+  if (estCCQ(matiere)) return banqueCCQ(sujet, true); // Culture et citoyenneté québécoise : programme de 2e secondaire
   if (/renaissance|humanis|gutenberg/i.test(sujet)) return RENAISSANCE;
   const costumes = banqueCostumes(matiere, sujet); // costumes d'époque ou traditionnels (illustrations)
   if (costumes) return costumes;

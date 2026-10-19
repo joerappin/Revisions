@@ -12,6 +12,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import QRCode from "qrcode";
 import { carteDepuisRequete } from "./carto.js";
 import { COSTUMES, svgCostume } from "./costumes.js";
+import { banqueCCQ, estCCQ } from "./ccq-banque.js";
 import { genererTestGeo } from "./geo-banque.js";
 import { demoRevision, demoFinal, demoDico } from "./demo.js";
 
@@ -440,10 +441,13 @@ Si une partie de la photo est illisible, n'invente rien : base-toi seulement sur
   return { ...r.json, questions: nettoyerQuestions(r.json.questions), sources: [] };
 }
 
+// Leçons intégrées qui suivent un programme officiel : utilisées même avec une clé API.
+const leconIntegree = (matiere, sujet) => estCCQ(matiere) && !!banqueCCQ(sujet);
+
 // ---------- Routes IA ----------
 async function genererRevision(p, matiere, sujet) {
   const reg = reglagesDe(p);
-  if (!getClient()) return demoRevision(matiere, sujet, reg.nbRevision, pctPour(reg, matiere));
+  if (!getClient() || leconIntegree(matiere, sujet)) return demoRevision(matiere, sujet, reg.nbRevision, pctPour(reg, matiere));
   const rech = await recherche(p.annee, matiere, sujet);
   const n = reg.nbRevision, rep = repartition(n, pctPour(reg, matiere));
   const content = [
@@ -471,7 +475,7 @@ Si des photos sont jointes, inspire-toi de leurs exercices et de leur vocabulair
 
 async function genererFinal(p, matiere, sujet, dejaVues) {
   const reg = reglagesDe(p);
-  if (!getClient()) return demoFinal(matiere, sujet, reg.nbFinal, pctPour(reg, matiere));
+  if (!getClient() || leconIntegree(matiere, sujet)) return demoFinal(matiere, sujet, reg.nbFinal, pctPour(reg, matiere));
   const n = reg.nbFinal, rep = repartition(n, pctPour(reg, matiere));
   const rech = await recherche(p.annee, matiere, sujet);
   const content = [
