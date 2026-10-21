@@ -185,6 +185,7 @@ const BANQUES = {
   },
 };
 
+export const estAlgebre = (matiere, sujet) => /math/i.test(matiere || "") && /alg[eè]br|[ée]quation|expression|variable|inconnue|distributiv/i.test(sujet || "");
 function banque(matiere, sujet = "") {
   if (estCCQ(matiere)) return banqueCCQ(sujet, true); // Culture et citoyenneté québécoise : programme de 2e secondaire
   if (/renaissance|humanis|gutenberg/i.test(sujet)) return RENAISSANCE;
@@ -195,7 +196,7 @@ function banque(matiere, sujet = "") {
   if (/histoire|univers social/i.test(matiere)) return RENAISSANCE;
   if (/g[ée]ograph/i.test(matiere)) return banqueGeo(matiere, "les continents");
   if (/angl/i.test(matiere)) return BANQUES["Anglais"];
-  if (/math/i.test(matiere) && /alg[eè]br|[ée]quation|expression|variable|inconnue|distributiv/i.test(sujet)) return ALGEBRE;
+  if (estAlgebre(matiere, sujet)) return ALGEBRE;
   if (/fran/i.test(matiere)) return BANQUES["Français"];
   return BANQUES["Mathématique"];
 }
@@ -264,18 +265,21 @@ function enrichir(questions, maths) {
 }
 const estMaths = (b) => b === ALGEBRE || b === BANQUES["Mathématique"];
 // Maths en « questions ouvertes seulement » : un QCM à réponse courte devient une question à écrire (avec calcul).
-const enOuvertes = (questions) => questions.map((x) => x.type !== "qcm" || x.reponse.length > 14 ? x
+const enOuvertes = (questions) => questions.map((x) => x.type !== "qcm" || x.reponse.length > 14 || x.garderChoix ? x
   : { ...x, type: /^-?\d+([.,]\d+)?$/.test(x.reponse) ? "numerique" : "ouverte", choix: [], explications_choix: [], reponses_acceptees: [x.reponse.replace(/\s+/g, "")] });
 // Banque + (en maths) des questions générées avec de nouveaux nombres à chaque fois.
-const preparer = (b, pct, n = 10) => {
-  const qs = estMaths(b) ? [...b.questions, ...questionsGenerees(b === ALGEBRE ? "algebre" : "fractions", Math.max(8, n))] : b.questions;
+// Algèbre : les questions fixes sont filtrées selon le niveau (1 : faciles; 2 : faciles + moyennes; 3-4 : toutes).
+const DIFF_PERMISES = { 1: ["facile"], 2: ["facile", "moyen"] };
+const preparer = (b, pct, n = 10, { niveau } = {}) => {
+  const fixes = b === ALGEBRE && DIFF_PERMISES[niveau] ? b.questions.filter((x) => DIFF_PERMISES[niveau].includes(x.difficulte)) : b.questions;
+  const qs = estMaths(b) ? [...fixes, ...questionsGenerees(b === ALGEBRE ? "algebre" : "fractions", Math.max(10, n + 6), { niveau })] : b.questions;
   return estMaths(b) && pct <= 0 ? enOuvertes(qs) : qs;
 };
 
 // vues : questions déjà vues par l'élève sur ce sujet (les plus anciennes d'abord) → on propose d'abord les nouvelles.
-export function demoRevision(matiere, sujet, n = 10, pctQcm = 70, vues = []) {
+export function demoRevision(matiere, sujet, n = 10, pctQcm = 70, vues = [], opts = {}) {
   const b = banque(matiere, sujet);
-  return { demo: true, fiche: b.fiche, questions: enrichir(selection(preparer(b, pctQcm, n), n, pctQcm, vues), estMaths(b)), sources: [{ titre: "Alloprof", url: "https://www.alloprof.qc.ca/" }] };
+  return { demo: true, fiche: b.fiche, questions: enrichir(selection(preparer(b, pctQcm, n, opts), n, pctQcm, vues), estMaths(b)), sources: [{ titre: "Alloprof", url: "https://www.alloprof.qc.ca/" }] };
 }
 
 // ---------- Mini-dictionnaire du mode démo ----------
@@ -308,7 +312,7 @@ export function demoDico(items) {
     || d(mot, "", "—", ["(mode démo : mot absent du mini-dictionnaire)"], "", "", [], []));
 }
 
-export function demoFinal(matiere, sujet, n = 20, pctQcm = 70, vues = []) {
+export function demoFinal(matiere, sujet, n = 20, pctQcm = 70, vues = [], opts = {}) {
   const b = banque(matiere, sujet);
-  return { demo: true, questions: enrichir(selection(preparer(b, pctQcm, n), n, pctQcm, vues), estMaths(b)), sources: [] };
+  return { demo: true, questions: enrichir(selection(preparer(b, pctQcm, n, opts), n, pctQcm, vues), estMaths(b)), sources: [] };
 }

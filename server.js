@@ -14,7 +14,8 @@ import { carteDepuisRequete } from "./carto.js";
 import { COSTUMES, svgCostume } from "./costumes.js";
 import { banqueCCQ, estCCQ } from "./ccq-banque.js";
 import { genererTestGeo } from "./geo-banque.js";
-import { demoRevision, demoFinal, demoDico, cleQuestion } from "./demo.js";
+import { demoRevision, demoFinal, demoDico, cleQuestion, estAlgebre } from "./demo.js";
+import { niveauAlgebre } from "./maths-generateur.js";
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC = path.join(ROOT, "public");
@@ -222,6 +223,8 @@ function contexteProfil(p, matiere, sujet) {
     faibles.length ? `Notions où l'élève s'est trompé récemment (à retravailler en priorité) : ${faibles.join(", ")}.` : "",
     photos.length ? `Notes de cours/exercices photographiés par l'élève (utilise le même vocabulaire, les mêmes méthodes et le même style d'exercices que son enseignant) :\n${photos.slice(-8).map((ph, i) => `[Photo ${i + 1} — ${ph.sujet || "sans sujet"}] ${ph.description || "(non analysée)"}`).join("\n")}` : "",
   ];
+  const nv = niveauDe(p, matiere, sujet);
+  if (nv) lignes.push(`Moment de l'année : ${nv.moment === "debut" ? "début d'année scolaire — c'est le PREMIER contrôle d'algèbre de l'année" : nv.moment === "fin" ? "fin d'année scolaire" : "milieu d'année"}. Niveau visé : ${nv.niveau}/4 (${CONTENU_NIVEAU[nv.niveau]}). Environ 70 % des questions à ce niveau, le reste en rappel des notions plus simples; ne pas dépasser ce niveau.`);
   return lignes.filter(Boolean).join("\n");
 }
 // Jusqu'à 3 photos récentes du même sujet (ou de la matière) jointes directement au prompt.
@@ -473,6 +476,16 @@ Si des photos sont jointes, inspire-toi de leurs exercices et de leur vocabulair
   return { ...r.json, questions: nettoyerQuestions(r.json.questions), sources: rech.sources };
 }
 
+// Algèbre : niveau visé (année scolaire, moment de l'année, réussites récentes sur ce sujet). null hors algèbre.
+const niveauDe = (p, matiere, sujet) => estAlgebre(matiere, sujet)
+  ? niveauAlgebre({ annee: p.annee, sessions: p.sessions.filter((s) => s.matiere === matiere && s.sujet === sujet) }) : null;
+const CONTENU_NIVEAU = {
+  1: "bases : vocabulaire (variable, coefficient, terme constant, termes semblables), valeur numérique avec des nombres positifs, réduire des termes semblables simples, équations à une étape (x + b = c, ax = c), traduire une phrase en expression",
+  2: "consolidation : valeur numérique avec des négatifs, réduire avec des soustractions, distributivité a(x + b), équations à deux étapes (ax + b = c), problèmes simples et périmètres",
+  3: "avancé : distributivité avec des négatifs, deux variables, inconnue des deux côtés (ax + b = cx + d), équations avec parenthèses, problèmes à deux étapes",
+  4: "défi : multiplication de monômes, mise en évidence simple, équations avec fractions (x/a + b = c), problèmes plus complexes",
+};
+
 // ---------- Questions déjà vues : chaque révision / examen propose d'abord des questions nouvelles ----------
 const cleVues = (matiere, sujet) => `${matiere}|${sujet}`.toLowerCase();
 const vuesDe = (p, matiere, sujet) => p.vues?.[cleVues(matiere, sujet)] || [];
@@ -512,7 +525,7 @@ async function revisionFraiche(p, matiere, sujet) {
   const reg = reglagesDe(p), vues = vuesDe(p, matiere, sujet);
   let lecon, questions;
   if (!getClient() || leconIntegree(matiere, sujet)) {
-    lecon = demoRevision(matiere, sujet, reg.nbRevision, pctPour(reg, matiere), vues);
+    lecon = demoRevision(matiere, sujet, reg.nbRevision, pctPour(reg, matiere), vues, { niveau: niveauDe(p, matiere, sujet)?.niveau });
     questions = lecon.questions;
   } else {
     lecon = await obtenirLecon(p, matiere, sujet);
@@ -528,13 +541,13 @@ async function revisionFraiche(p, matiere, sujet) {
   questions = melanger(questions);
   marquerVues(p, matiere, sujet, questions);
   prechaufferRevision(p, matiere, sujet, lecon.fiche); // la prochaine révision se prépare déjà
-  return { ...lecon, questions };
+  return { ...lecon, questions, niveau: niveauDe(p, matiere, sujet)?.texte || "" };
 }
 
 async function genererFinal(p, matiere, sujet, dejaVuesClient = []) {
   const reg = reglagesDe(p);
   const dejaVues = [...new Set([...(dejaVuesClient || []), ...enonces(p, matiere, sujet)])];
-  if (!getClient() || leconIntegree(matiere, sujet)) return demoFinal(matiere, sujet, reg.nbFinal, pctPour(reg, matiere), vuesDe(p, matiere, sujet));
+  if (!getClient() || leconIntegree(matiere, sujet)) return demoFinal(matiere, sujet, reg.nbFinal, pctPour(reg, matiere), vuesDe(p, matiere, sujet), { niveau: niveauDe(p, matiere, sujet)?.niveau });
   const n = reg.nbFinal, rep = repartition(n, pctPour(reg, matiere));
   const rech = await recherche(p.annee, matiere, sujet);
   const content = [
@@ -1071,7 +1084,7 @@ async function api(req, res, url) {
       const f = await prendreFinal(p, matiereDe(b), sujetDe(b), b.dejaVues);
       const questions = melanger(f.questions);
       marquerVues(p, matiereDe(b), sujetDe(b), questions);
-      return send(res, 200, { ...f, questions });
+      return send(res, 200, { ...f, questions, niveau: niveauDe(p, matiereDe(b), sujetDe(b))?.texte || "" });
     }
     // Leçons en photo : liste, création, lecture, suppression.
     if (parts[2] === "lecons-photo") {

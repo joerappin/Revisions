@@ -1778,6 +1778,7 @@ async function ongletTest(p, zone) {
         const data = await api(`/profils/${p.id}/final`, { method: "POST", body: { matiere: p.matiere, sujet: p.sujet, dejaVues } });
         finChargement();
         if (!document.body.contains(zone)) return;
+        if (data.niveau) toast("📈 " + data.niveau);
         return demarrerQuiz({ type: "final", questions: data.questions, matiere: p.matiere, sujet: p.sujet, sources: data.sources });
       }
       // Révision : de nouvelles questions à chaque fois (celles déjà vues passent en dernier), dans un ordre différent.
@@ -1785,6 +1786,7 @@ async function ongletTest(p, zone) {
       const data = await api(`/profils/${p.id}/revision`, { method: "POST", body: { matiere: p.matiere, sujet: p.sujet } });
       finChargement();
       if (!document.body.contains(zone)) return;
+      if (data.niveau) toast("📈 " + data.niveau);
       demarrerQuiz({ type: "revision", questions: melange(data.questions), matiere: p.matiere, sujet: p.sujet, sources: data.sources });
     } catch (e) {
       finChargement(); enCours = false; toast(e.message, true);
