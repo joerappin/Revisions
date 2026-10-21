@@ -1174,13 +1174,41 @@ function correspondance(q, rep, souple = false) {
 }
 const estCorrectLocal = (q, rep, souple = false) => correspondance(q, rep, souple).ok;
 // Indice (bouton ⓘ) : partout sauf en français et en maths. Celui de la question, sinon une piste générale.
+// Indice (bouton ⓘ), pour toutes les matières : celui de la question, sinon une piste légère.
+// En maths : la notion à utiliser et un petit exemple résolu (avec d'autres nombres). En français : la règle à appliquer.
+const INDICES_MATHS = [
+  [/[ée]quation|r[ée]sou|isole|inconnue|vaut x|valeur de x/, "Notion : une équation est une balance, fais la même opération des deux côtés pour isoler x. Exemple : 3x + 4 = 19 → 3x = 15 → x = 5."],
+  [/distribu|d[ée]velopp/, "Notion : distributivité, multiplie le nombre devant la parenthèse par CHAQUE terme. Exemple : 4(x − 2) = 4x − 8."],
+  [/r[ée]dui|semblable/, "Notion : on regroupe seulement les termes semblables (même lettre). Exemple : 5y + 3 + 2y − 1 = 7y + 2."],
+  [/probl[eè]me|traduis|double|triple|forfait|de plus que|de moins que/, "Notion : choisis une lettre pour l'inconnue et traduis chaque mot en symbole. Exemple : « le triple d'un nombre diminué de 2 » → 3x − 2."],
+  [/expression|si [a-z] =|remplace|coefficient|variable|constante/, "Notion : remplace la lettre par sa valeur, puis respecte la priorité des opérations. Exemple : si a = 3, 2a + 5 = 2 × 3 + 5 = 11."],
+  [/[ée]quivalent/, "Notion : fractions équivalentes, multiplie (ou divise) le numérateur ET le dénominateur par le même nombre. Exemple : 2/5 = 6/15."],
+  [/simplifi|irr[ée]ductible/, "Notion : divise le haut et le bas par leur plus grand diviseur commun. Exemple : 12/18 = 2/3 (÷ 6)."],
+  [/fraction|\d+\/\d+/, "Notion : pour additionner des fractions, mets-les sur le même dénominateur. Exemple : 1/2 + 1/3 = 3/6 + 2/6 = 5/6."],
+  [/priorit|parenth|exposant/, "Notion : priorité des opérations : parenthèses, exposants, × et ÷, puis + et −. Exemple : 10 − 2 × 3 = 10 − 6 = 4."],
+  [/pourcent|%/, "Notion : x % d'un nombre = nombre × x ÷ 100. Exemple : 15 % de 40 = 40 × 0,15 = 6."],
+  [/aire|p[ée]rim[eè]tre/, "Notion : périmètre = le tour; aire = la surface (rectangle : longueur × largeur). Exemple : rectangle de 5 sur 2 → P = 14, A = 10."],
+  [/volume/, "Notion : volume d'un prisme = aire de la base × hauteur. Exemple : boîte de 2 × 5 × 3 = 30 cm³."],
+  [/pythagore|hypot[ée]nuse|triangle rectangle/, "Notion : a² + b² = c², où c est l'hypoténuse. Exemple : 6² + 8² = 100 → c = 10."],
+  [/probabilit|d[ée] |pi[eè]ce de monnaie/, "Notion : probabilité = cas favorables ÷ cas possibles. Exemple : tirer une bille rouge parmi 2 rouges et 3 bleues = 2/5."],
+  [/moyenne|m[ée]diane|mode |statisti/, "Notion : moyenne = somme des valeurs ÷ nombre de valeurs. Exemple : (3 + 5 + 10) ÷ 3 = 6."],
+  [/proportion|taux|rapport|r[eè]gle de trois|vitesse/, "Notion : règle de trois (produit croisé). Exemple : 3 cahiers coûtent 6 $, donc 5 cahiers coûtent 5 × 6 ÷ 3 = 10 $."],
+  [/d[ée]cimal|virgule/, "Notion : aligne les virgules avant d'additionner ou de soustraire. Exemple : 3,4 + 1,25 = 4,65."],
+  [/entier|n[ée]gatif|relatif/, "Notion : deux signes pareils donnent +, deux signes différents donnent −. Exemple : (−3) × (−4) = 12; (−3) × 4 = −12."],
+];
 function indiceDe(q, matiere) {
-  if (/fran|math/i.test(matiere || "")) return "";
   if (q.indice) return q.indice;
+  const m = matiere || "";
+  if (/math/i.test(m)) {
+    const t = `${q.notion || ""} ${q.enonce || ""}`.toLowerCase();
+    const trouve = INDICES_MATHS.find(([re]) => re.test(t));
+    return trouve ? trouve[1] : `Notion : ${q.notion || "relis la règle vue en classe"}. Écris les données de l'énoncé, puis applique la règle étape par étape.`;
+  }
+  if (/fran/i.test(m)) return q.notion ? `Pense à la règle : « ${q.notion} ». Repère le mot qui commande l'accord ou le choix, puis relis toute la phrase.` : "Repère le mot qui commande l'accord ou le choix, puis relis toute la phrase.";
   if (q.type === "vrai_faux") return "Lis l'affirmation mot par mot : un seul détail peut la rendre fausse.";
   if (q.type === "ordre") return "Trouve d'abord le premier élément (le plus ancien ou le plus grand), puis avance pas à pas.";
   if (q.type === "carte") return "Repère d'abord le bon continent, puis aide-toi des pays voisins et des mers.";
-  if (q.type === "ouverte" && q.reponse) return `La réponse commence par « ${String(q.reponse).slice(0, 2)}… » (${String(q.reponse).replace(/[^\p{L}\d]/gu, "").length} lettres).`;
+  if (q.type === "ouverte" && q.reponse && !/^[\d\s.,−-]+$/.test(q.reponse)) return `La réponse commence par « ${String(q.reponse).slice(0, 2)}… » (${String(q.reponse).replace(/[^\p{L}\d]/gu, "").length} lettres).`;
   if (q.type === "numerique") return "Note les données de l'énoncé et la règle à appliquer avant de calculer.";
   return q.notion ? `Pense à la notion « ${q.notion} » et élimine d'abord les réponses impossibles.` : "Élimine d'abord les réponses impossibles.";
 }
@@ -1752,14 +1780,10 @@ async function ongletTest(p, zone) {
         if (!document.body.contains(zone)) return;
         return demarrerQuiz({ type: "final", questions: data.questions, matiere: p.matiere, sujet: p.sujet, sources: data.sources });
       }
-      // La révision réutilise les questions de la leçon (instantané si la leçon est déjà prête).
-      let data = etat.leconCourante?.cle === p.matiere + "|" + p.sujet ? etat.leconCourante.data : null;
-      if (!data) {
-        chargement("Sensei prépare ta révision !", ["Il relit la leçon…", "Il prépare tes questions…"]);
-        data = await api(`/profils/${p.id}/lecon`, { method: "POST", body: { matiere: p.matiere, sujet: p.sujet } });
-        etat.leconCourante = { cle: p.matiere + "|" + p.sujet, data };
-        finChargement();
-      }
+      // Révision : de nouvelles questions à chaque fois (celles déjà vues passent en dernier), dans un ordre différent.
+      chargement("Sensei prépare ta révision !", ["Il relit la leçon…", "Il choisit des questions que tu n'as pas encore vues…"]);
+      const data = await api(`/profils/${p.id}/revision`, { method: "POST", body: { matiere: p.matiere, sujet: p.sujet } });
+      finChargement();
       if (!document.body.contains(zone)) return;
       demarrerQuiz({ type: "revision", questions: melange(data.questions), matiere: p.matiere, sujet: p.sujet, sources: data.sources });
     } catch (e) {

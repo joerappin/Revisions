@@ -3,6 +3,7 @@ import { RENAISSANCE } from "./demo-histoire-geo.js";
 import { banqueGeo } from "./geo-banque.js";
 import { banqueCostumes } from "./costumes-banque.js";
 import { banqueCCQ, estCCQ } from "./ccq-banque.js";
+import { questionsGenerees } from "./maths-generateur.js";
 const q = (type, enonce, choix, reponse, explication, notion, difficulte = "moyen", extra = {}) =>
   ({ type, enonce, choix, indice: "", elements: [], image_svg: "", image_url: "", reponse, reponses_acceptees: [], tolerance: 0, audio: "", explication, demarche: "", explications_choix: [], notion, difficulte, ...extra });
 const VF = ["Vrai", "Faux"];
@@ -200,15 +201,42 @@ function banque(matiere, sujet = "") {
 }
 const estChoix = (x) => x.type === "qcm" || x.type === "vrai_faux" || x.type === "ordre" || x.type === "carte"; // questions sans écriture
 // Choisit n questions en respectant au mieux la part de questions à choix demandée.
-function selection(questions, n, pctQcm) {
+// Clé d'une question (pour savoir si l'élève l'a déjà vue) : énoncé + image + réponse.
+export const cleQuestion = (x) => `${x.enonce}|${x.image_url || ""}|${x.reponse}`.toLowerCase().replace(/\s+/g, " ").slice(0, 300);
+const melange = (a) => { const t = [...a]; for (let i = t.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [t[i], t[j]] = [t[j], t[i]]; } return t; };
+// Jamais vues d'abord (au hasard), puis les plus anciennement vues : la révision change à chaque fois.
+function parFraicheur(questions, vues = []) {
+  const rang = new Map(vues.map((e, i) => [e, i]));
+  return melange(questions).sort((a, b) => (rang.get(cleQuestion(a)) ?? -1) - (rang.get(cleQuestion(b)) ?? -1));
+}
+// Variantes : chaque QCM devient aussi un « vrai ou faux » (bonne réponse, puis un mauvais choix).
+// Une seule version d'une même question par séance (base commune).
+function avecVariantes(questions) {
+  const out = [];
+  for (const x of questions) {
+    const base = cleQuestion(x);
+    out.push({ ...x, _base: base });
+    if (x.type !== "qcm" || x.choix.length < 3 || /^(Vrai|Faux)$/.test(x.reponse)) continue;
+    const mauvais = x.choix.filter((c) => c !== x.reponse);
+    const faux = mauvais[Math.floor(Math.random() * mauvais.length)];
+    const pq = (x.explications_choix || []).find((e) => e.choix === faux)?.pourquoi || "";
+    const enonce = (rep) => `Vrai ou faux ? ${x.enonce.replace(/\s*\?$/, " ?")} Réponse proposée : « ${rep} »`;
+    out.push({ ...x, _base: base, type: "vrai_faux", choix: ["Vrai", "Faux"], enonce: enonce(x.reponse), reponse: "Vrai", explications_choix: [], explication: `Vrai : « ${x.reponse} » est la bonne réponse. ${x.explication}` });
+    out.push({ ...x, _base: base, type: "vrai_faux", choix: ["Vrai", "Faux"], enonce: enonce(faux), reponse: "Faux", explications_choix: [], explication: `Faux. ${pq ? pq + " " : ""}La bonne réponse est « ${x.reponse} ». ${x.explication}` });
+  }
+  return out;
+}
+function selection(questionsBrutes, n, pctQcm, vues = []) {
+  const vuesBases = new Set();
+  const questions = parFraicheur(avecVariantes(questionsBrutes), vues).filter((x) => (vuesBases.has(x._base) ? false : vuesBases.add(x._base)))
+    .map(({ _base, ...x }) => x);
   const choix = questions.filter(estChoix), ouvertes = questions.filter((x) => !estChoix(x));
-  if (pctQcm <= 0) return ouvertes.slice(0, n);
-  if (pctQcm >= 100) return choix.slice(0, n);
+  if (pctQcm <= 0) return melange(ouvertes.slice(0, n));
+  if (pctQcm >= 100) return melange(choix.slice(0, n));
   let nc = Math.round((Math.min(n, questions.length) * pctQcm) / 100), no = Math.min(n, questions.length) - nc;
   if (nc > choix.length) { no += nc - choix.length; nc = choix.length; }
   if (no > ouvertes.length) { nc = Math.min(choix.length, nc + no - ouvertes.length); no = ouvertes.length; }
-  const pris = new Set([...choix.slice(0, nc), ...ouvertes.slice(0, no)]);
-  return questions.filter((x) => pris.has(x));
+  return melange([...choix.slice(0, nc), ...ouvertes.slice(0, no)]); // ordre toujours différent
 }
 
 // Pourquoi chaque mauvais choix est faux (questions d'algèbre de démo).
@@ -238,11 +266,16 @@ const estMaths = (b) => b === ALGEBRE || b === BANQUES["Mathématique"];
 // Maths en « questions ouvertes seulement » : un QCM à réponse courte devient une question à écrire (avec calcul).
 const enOuvertes = (questions) => questions.map((x) => x.type !== "qcm" || x.reponse.length > 14 ? x
   : { ...x, type: /^-?\d+([.,]\d+)?$/.test(x.reponse) ? "numerique" : "ouverte", choix: [], explications_choix: [], reponses_acceptees: [x.reponse.replace(/\s+/g, "")] });
-const preparer = (b, pct) => (estMaths(b) && pct <= 0 ? enOuvertes(b.questions) : b.questions);
+// Banque + (en maths) des questions générées avec de nouveaux nombres à chaque fois.
+const preparer = (b, pct, n = 10) => {
+  const qs = estMaths(b) ? [...b.questions, ...questionsGenerees(b === ALGEBRE ? "algebre" : "fractions", Math.max(8, n))] : b.questions;
+  return estMaths(b) && pct <= 0 ? enOuvertes(qs) : qs;
+};
 
-export function demoRevision(matiere, sujet, n = 10, pctQcm = 70) {
+// vues : questions déjà vues par l'élève sur ce sujet (les plus anciennes d'abord) → on propose d'abord les nouvelles.
+export function demoRevision(matiere, sujet, n = 10, pctQcm = 70, vues = []) {
   const b = banque(matiere, sujet);
-  return { demo: true, fiche: b.fiche, questions: enrichir(selection(preparer(b, pctQcm), n, pctQcm), estMaths(b)), sources: [{ titre: "Alloprof", url: "https://www.alloprof.qc.ca/" }] };
+  return { demo: true, fiche: b.fiche, questions: enrichir(selection(preparer(b, pctQcm, n), n, pctQcm, vues), estMaths(b)), sources: [{ titre: "Alloprof", url: "https://www.alloprof.qc.ca/" }] };
 }
 
 // ---------- Mini-dictionnaire du mode démo ----------
@@ -275,7 +308,7 @@ export function demoDico(items) {
     || d(mot, "", "—", ["(mode démo : mot absent du mini-dictionnaire)"], "", "", [], []));
 }
 
-export function demoFinal(matiere, sujet, n = 20, pctQcm = 70) {
+export function demoFinal(matiere, sujet, n = 20, pctQcm = 70, vues = []) {
   const b = banque(matiere, sujet);
-  return { demo: true, questions: enrichir(selection([...preparer(b, pctQcm)].sort(() => Math.random() - 0.5), n, pctQcm), estMaths(b)), sources: [] };
+  return { demo: true, questions: enrichir(selection(preparer(b, pctQcm, n), n, pctQcm, vues), estMaths(b)), sources: [] };
 }

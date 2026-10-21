@@ -14,7 +14,7 @@ import { carteDepuisRequete } from "./carto.js";
 import { COSTUMES, svgCostume } from "./costumes.js";
 import { banqueCCQ, estCCQ } from "./ccq-banque.js";
 import { genererTestGeo } from "./geo-banque.js";
-import { demoRevision, demoFinal, demoDico } from "./demo.js";
+import { demoRevision, demoFinal, demoDico, cleQuestion } from "./demo.js";
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC = path.join(ROOT, "public");
@@ -245,7 +245,7 @@ const QUESTION = {
     type: { type: "string", enum: ["qcm", "vrai_faux", "numerique", "ouverte", "ordre"] },
     elements: { type: "array", items: { type: "string" }, description: "Type ordre (frise chronologique) : 4 à 6 événements dans le BON ordre chronologique, avec la date entre parenthèses. [] pour les autres types" },
     image_svg: { type: "string", description: "Image SVG autonome nécessaire à la question (tenue d'époque, figure géométrique, schéma…) ou \"\"" },
-    indice: { type: "string", description: "Indice qui aide l'élève à trouver SANS donner la réponse (ex. une piste, un repère, la première lettre). \"\" en français et en maths" },
+    indice: { type: "string", description: "Indice léger qui aide l'élève à trouver SANS donner la réponse (une piste, un repère). En maths : rappelle la notion et donne un petit exemple semblable résolu avec d'autres nombres. En français : rappelle la règle à appliquer." },
     image_url: { type: "string", description: "Image fournie par le site, ou \"\" : drapeau « /drapeaux/<code iso2>.svg » (ex. /drapeaux/fr.svg) ou carte « /api/carte?region=<monde|europe|ameriques|afrique>&rouge=<iso2 ou continent>&numeros=<iso2,iso2>&capitales=1&noms=1&continents=1 » ou costume « /costumes/<clé>.svg »" },
     enonce: { type: "string" },
     choix: { type: "array", items: { type: "string" }, description: "4 choix courts pour qcm, [\"Vrai\",\"Faux\"] pour vrai_faux, [] pour numerique et ouverte" },
@@ -364,7 +364,7 @@ Règles : commence par <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 
 function consignesQuestions(n, r, matiere) {
   const lang = estLangue(matiere);
   return `${n} questions au total : exactement ${r.choix} à choix (qcm ou vrai_faux) et ${r.ouvertes} ouvertes (type "numerique" pour une réponse qui est un nombre, sinon type "ouverte" avec une réponse courte : un mot, une expression ou une phrase courte, corrigeable sans ambiguïté; liste les variantes acceptées dans reponses_acceptees).
-Indice : sauf en français et en maths, donne pour chaque question un indice court qui met sur la piste sans donner la réponse.
+Indice : pour CHAQUE question, un indice court et léger qui met sur la piste sans donner la réponse. En maths, rappelle la notion et donne un exemple semblable résolu avec d'autres nombres; en français, rappelle la règle à appliquer.
 Corrections : l'explication enseigne la règle; si la matière est les maths ou les sciences, "demarche" détaille chaque étape du calcul (une par ligne, avec les nombres réels de la question et une vérification); pour chaque mauvais choix, "explications_choix" dit exactement quelle erreur mène à ce choix (ex. « tu as additionné les dénominateurs »).
 ${estHistoire(matiere) ? `Histoire : inclus au moins 2 frises chronologiques (type "ordre", 4 à 6 événements avec leur date) et des questions avec image (image_svg) : tenues vestimentaires d'époque à identifier, objets, monuments, cartes. Les questions "ordre" comptent dans les questions à choix.` : ""}
 ${/histoire|g[ée]ograph|univers social|monde|culture/i.test(matiere) ? `Costumes illustrés disponibles (image_url ou visuel_url « /costumes/<clé>.svg », sans légende sur l'image) : ${Object.entries(COSTUMES).map(([k, c]) => `${k} = ${c.nom}${c.vetement ? " (" + c.vetement + ")" : ""}`).join(" ; ")}. Utilise-les pour les questions « à quelle époque / de quel pays vient ce costume ? ».\n` : ""}${estGeo(matiere) ? `Géographie : utilise les cartes et drapeaux du site via image_url (cartes réelles de type atlas scolaire) : « quel pays est en rouge ? » (/api/carte?region=europe&rouge=fr), « quel pays porte le numéro 2 ? » (/api/carte?region=afrique&numeros=ng,ke,eg), « à quel pays appartient ce drapeau ? » (/drapeaux/ca.svg), capitales. Régions disponibles : monde (rouge = nom de continent, continents=1), europe, ameriques, afrique. Pour les notions, mets une carte dans visuel_url.` : ""}
@@ -473,9 +473,68 @@ Si des photos sont jointes, inspire-toi de leurs exercices et de leur vocabulair
   return { ...r.json, questions: nettoyerQuestions(r.json.questions), sources: rech.sources };
 }
 
-async function genererFinal(p, matiere, sujet, dejaVues) {
+// ---------- Questions déjà vues : chaque révision / examen propose d'abord des questions nouvelles ----------
+const cleVues = (matiere, sujet) => `${matiere}|${sujet}`.toLowerCase();
+const vuesDe = (p, matiere, sujet) => p.vues?.[cleVues(matiere, sujet)] || [];
+function marquerVues(p, matiere, sujet, questions) {
+  p.vues ||= {};
+  const cles = questions.map(cleQuestion), k = cleVues(matiere, sujet);
+  p.vues[k] = [...vuesDe(p, matiere, sujet).filter((c) => !cles.includes(c)), ...cles].slice(-400); // les plus anciennes d'abord
+  saveDb();
+}
+const melanger = (a) => { const t = [...a]; for (let i = t.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [t[i], t[j]] = [t[j], t[i]]; } return t; };
+const enonces = (p, matiere, sujet) => vuesDe(p, matiere, sujet).slice(-40).map((c) => c.split("|")[0]);
+
+// Nouvelles questions de révision par l'IA (questions seulement, la fiche reste celle de la leçon).
+async function genererQuestionsRevision(p, matiere, sujet, fiche) {
+  const reg = reglagesDe(p), n = reg.nbRevision, rep = repartition(n, pctPour(reg, matiere));
+  const r = await ask({ system: SYSTEM, schema: SCHEMA_FINAL, maxTokens: 64000, content: [...imagesProfil(p, matiere, sujet), { type: "text", text: `${contexteProfil(p, matiere, sujet)}
+
+Crée une NOUVELLE séance de révision sur « ${sujet} » (${matiere}, ${p.annee}), différente des précédentes : de nouveaux énoncés, de nouveaux exemples, de nouveaux nombres.
+${fiche ? `Notions de la leçon :\n${fiche.notions.map((no) => `- ${no.titre} : ${no.explication}`).join("\n").slice(0, 6000)}` : ""}
+${consignesQuestions(n, rep, matiere)}
+Chaque explication doit enseigner, pas seulement corriger. Insiste sur les notions faibles de l'élève.
+Ne réutilise pas ces questions déjà vues :
+${enonces(p, matiere, sujet).map((e) => "- " + e).join("\n")}` }] });
+  return nettoyerQuestions(r.json.questions);
+}
+const revisionsPretes = new Map();
+function prechaufferRevision(p, matiere, sujet, fiche) {
+  const cle = cleLecon(p, matiere, sujet);
+  if (getClient() && !leconIntegree(matiere, sujet) && !revisionsPretes.has(cle)) {
+    const pr = genererQuestionsRevision(p, matiere, sujet, fiche);
+    pr.catch(() => revisionsPretes.delete(cle));
+    revisionsPretes.set(cle, pr);
+  }
+}
+// Révision : la fiche de la leçon (gardée en mémoire) + des questions qui changent à chaque fois, dans un ordre nouveau.
+async function revisionFraiche(p, matiere, sujet) {
+  const reg = reglagesDe(p), vues = vuesDe(p, matiere, sujet);
+  let lecon, questions;
+  if (!getClient() || leconIntegree(matiere, sujet)) {
+    lecon = demoRevision(matiere, sujet, reg.nbRevision, pctPour(reg, matiere), vues);
+    questions = lecon.questions;
+  } else {
+    lecon = await obtenirLecon(p, matiere, sujet);
+    const neuves = lecon.questions.filter((x) => !vues.includes(cleQuestion(x)));
+    if (neuves.length >= Math.ceil(lecon.questions.length * 0.7)) questions = neuves;
+    else {
+      const cle = cleLecon(p, matiere, sujet);
+      const pr = revisionsPretes.get(cle) || genererQuestionsRevision(p, matiere, sujet, lecon.fiche);
+      revisionsPretes.delete(cle);
+      questions = await pr;
+    }
+  }
+  questions = melanger(questions);
+  marquerVues(p, matiere, sujet, questions);
+  prechaufferRevision(p, matiere, sujet, lecon.fiche); // la prochaine révision se prépare déjà
+  return { ...lecon, questions };
+}
+
+async function genererFinal(p, matiere, sujet, dejaVuesClient = []) {
   const reg = reglagesDe(p);
-  if (!getClient() || leconIntegree(matiere, sujet)) return demoFinal(matiere, sujet, reg.nbFinal, pctPour(reg, matiere));
+  const dejaVues = [...new Set([...(dejaVuesClient || []), ...enonces(p, matiere, sujet)])];
+  if (!getClient() || leconIntegree(matiere, sujet)) return demoFinal(matiere, sujet, reg.nbFinal, pctPour(reg, matiere), vuesDe(p, matiere, sujet));
   const n = reg.nbFinal, rep = repartition(n, pctPour(reg, matiere));
   const rech = await recherche(p.annee, matiere, sujet);
   const content = [
@@ -491,7 +550,8 @@ Crée le TEST FINAL sur « ${sujet} » (${matiere}, ${p.annee}), comme une simul
 Environ 30 % faciles, 45 % moyennes, 25 % difficiles, couvrant toutes les notions du sujet au niveau attendu par la Progression des apprentissages; si une épreuve ministérielle existe pour ce niveau, imite son style.
 ${consignesQuestions(n, rep, matiere)}
 Insiste sur les notions faibles de l'élève.
-${dejaVues?.length ? `Ne réutilise pas ces questions déjà vues en révision :\n${dejaVues.slice(0, 30).map((e) => "- " + e).join("\n")}` : ""}`,
+${dejaVues?.length ? `Ne réutilise pas ces questions déjà vues :\n${dejaVues.slice(-40).map((e) => "- " + e).join("\n")}` : ""}
+Chaque examen doit être différent des précédents : nouveaux énoncés, nouveaux exemples, nouveaux nombres.`,
     },
   ];
   const r = await ask({ system: SYSTEM, content, schema: SCHEMA_FINAL, maxTokens: 64000 });
@@ -669,7 +729,7 @@ function nettoyerProfil(body) {
   return out;
 }
 function profilPublic(p) {
-  const { mdp, ...reste } = p;
+  const { mdp, vues, ...reste } = p;
   return { ...reste, reglages: reglagesDe(p) };
 }
 
@@ -982,9 +1042,14 @@ async function api(req, res, url) {
     const matiereDe = (b) => String(b.matiere || p.matiere || "").slice(0, 100);
     const sujetDe = (b) => String(b.sujet || p.sujet || "").slice(0, 150);
     // Leçon (mise en cache) : { nouvelle: true } force une nouvelle version.
-    if ((parts[2] === "lecon" || parts[2] === "revision") && m === "POST") {
+    if (parts[2] === "lecon" && m === "POST") {
       const b = await readBody(req);
       return send(res, 200, await obtenirLecon(p, matiereDe(b), sujetDe(b), { nouvelle: !!b.nouvelle }));
+    }
+    // Révision : questions nouvelles à chaque fois (déjà vues en dernier), ordre mélangé.
+    if (parts[2] === "revision" && m === "POST") {
+      const b = await readBody(req);
+      return send(res, 200, await revisionFraiche(p, matiereDe(b), sujetDe(b)));
     }
     // Préparation en arrière-plan (ne bloque pas) : leçon dès que la mission est choisie, test final à l'ouverture de l'onglet Test.
     if (parts[2] === "prechauffer" && m === "POST") {
@@ -1003,7 +1068,10 @@ async function api(req, res, url) {
     }
     if (parts[2] === "final" && m === "POST") {
       const b = await readBody(req);
-      return send(res, 200, await prendreFinal(p, matiereDe(b), sujetDe(b), b.dejaVues));
+      const f = await prendreFinal(p, matiereDe(b), sujetDe(b), b.dejaVues);
+      const questions = melanger(f.questions);
+      marquerVues(p, matiereDe(b), sujetDe(b), questions);
+      return send(res, 200, { ...f, questions });
     }
     // Leçons en photo : liste, création, lecture, suppression.
     if (parts[2] === "lecons-photo") {
