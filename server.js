@@ -92,8 +92,9 @@ const URL_PUBLIQUE = (process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL 
 const newId = () => crypto.randomBytes(6).toString("hex");
 
 // Réglages du test, propres à chaque profil.
-const REGLAGES_DEFAUT = { minuteur: true, secondesChoix: 45, secondesOuvertes: 120, nbRevision: 10, nbFinal: 20, pctQcm: 70, pctQcmMaths: 0 };
-const BORNES = { secondesChoix: [10, 300], secondesOuvertes: [15, 900], nbRevision: [5, 25], nbFinal: [10, 40], pctQcm: [0, 100], pctQcmMaths: [0, 100] };
+const REGLAGES_DEFAUT = { minuteur: true, secondesChoix: 45, secondesOuvertes: 120, secondesCalcul: 180, nbRevision: 10, nbFinal: 20, pctQcm: 70, pctQcmMaths: 0 };
+const CLES_MINUTEUR = ["minuteur", "secondesChoix", "secondesOuvertes", "secondesCalcul"]; // réglables par l'admin (et verrouillables)
+const BORNES = { secondesChoix: [10, 300], secondesOuvertes: [15, 900], secondesCalcul: [30, 1200], nbRevision: [5, 25], nbFinal: [10, 40], pctQcm: [0, 100], pctQcmMaths: [0, 100] };
 function reglagesDe(p) {
   return { ...REGLAGES_DEFAUT, ...(p.reglages || {}) };
 }
@@ -920,6 +921,18 @@ async function apiAdmin(req, res, parts) {
     return send(res, 200, { ok: true, fichiers: n, comptes: db.profils.length });
   }
 
+  // Minuteur des questions pour tous les comptes (ou ceux de ids) : { minuteur, secondesChoix, secondesOuvertes, secondesCalcul, verrou }
+  if (parts[1] === "minuteur" && m === "POST") {
+    const b = await readBody(req);
+    const cibles = Array.isArray(b.ids) ? db.profils.filter((x) => b.ids.includes(x.id)) : db.profils;
+    const choisis = nettoyerReglages({ ...REGLAGES_DEFAUT, ...b });
+    for (const x of cibles) {
+      x.reglages = { ...reglagesDe(x), ...Object.fromEntries(CLES_MINUTEUR.map((k) => [k, choisis[k]])) };
+      x.minuteurAdmin = !!b.verrou;
+    }
+    saveDb();
+    return send(res, 200, { comptes: cibles.length });
+  }
   if (parts[1] === "comptes" && parts.length === 2 && m === "GET") {
     return send(res, 200, db.profils.map(resumeCompte).sort((a, b) => String(b.derniereActivite).localeCompare(String(a.derniereActivite))));
   }
@@ -1009,7 +1022,11 @@ async function api(req, res, url) {
       return send(res, 200, profilPublic(p));
     }
     if (parts[2] === "reglages" && m === "PUT") {
-      p.reglages = nettoyerReglages(await readBody(req)); saveDb();
+      const b = await readBody(req), nouv = nettoyerReglages(b);
+      // Minuteur verrouillé par l'admin : l'élève ne peut pas le changer.
+      if (p.minuteurAdmin && !sess?.admin) { const r = reglagesDe(p); for (const k of CLES_MINUTEUR) nouv[k] = r[k]; }
+      if (sess?.admin && "minuteurAdmin" in b) p.minuteurAdmin = !!b.minuteurAdmin;
+      p.reglages = nouv; saveDb();
       return send(res, 200, profilPublic(p));
     }
     if (parts[2] === "corriger" && m === "POST") {

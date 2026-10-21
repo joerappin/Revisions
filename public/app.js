@@ -32,7 +32,7 @@ const SUJETS = [
   [/physique/i, ["Les habiletés motrices", "La condition physique", "Les saines habitudes de vie"]],
 ];
 const sujetsPour = (m) => (SUJETS.find(([re]) => re.test(m || "")) || [null, []])[1];
-const REGLAGES_DEFAUT = { minuteur: true, secondesChoix: 45, secondesOuvertes: 120, nbRevision: 10, nbFinal: 20, pctQcm: 70, pctQcmMaths: 0 };
+const REGLAGES_DEFAUT = { minuteur: true, secondesChoix: 45, secondesOuvertes: 120, secondesCalcul: 180, nbRevision: 10, nbFinal: 20, pctQcm: 70, pctQcmMaths: 0 };
 const reglagesDe = (p) => ({ ...REGLAGES_DEFAUT, ...(p?.reglages || {}) });
 
 // ================= Utilitaires =================
@@ -666,7 +666,7 @@ function graphique(sessions) {
 }
 const libType = (s) => s.type === "final" ? "Examen" : s.type === "lecon" ? "Leçon" : s.photo ? "Révision photo" : "Révision";
 function resumeReglages(r) {
-  return `${r.minuteur ? `⏱ ${r.secondesChoix} s (choix) / ${r.secondesOuvertes} s (ouvertes)` : "⏱ sans minuteur"} · ${r.nbRevision} questions en révision · ${r.nbFinal} à l'examen · ${r.pctQcm} % QCM / ${100 - r.pctQcm} % ouvertes · maths : ${100 - r.pctQcmMaths} % ouvertes avec calcul`;
+  return `${r.minuteur ? `⏱ ${r.secondesChoix} s (choix) / ${r.secondesOuvertes} s (ouvertes) / ${r.secondesCalcul} s (calcul en maths)` : "⏱ sans minuteur"} · ${r.nbRevision} questions en révision · ${r.nbFinal} à l'examen · ${r.pctQcm} % QCM / ${100 - r.pctQcm} % ouvertes · maths : ${100 - r.pctQcmMaths} % ouvertes avec calcul`;
 }
 
 // --- Sections du profil, réutilisées par l'écran web, les onglets mobiles et la vue admin ---
@@ -1065,19 +1065,28 @@ async function ecranMobileOnglet(onglet) {
 
 
 // ================= Écran : réglages du test =================
+// Champs du minuteur (réglages de l'élève et panneau admin « tous les comptes »).
+const champsMinuteur = (r) => `
+  <label class="case"><input type="checkbox" name="minuteur" ${r.minuteur ? "checked" : ""}> Activer le temps limite par question</label>
+  <div id="zone-temps" class="mission">
+    <div><label for="r-sc">Secondes par question à choix</label><input id="r-sc" type="number" name="secondesChoix" min="10" max="300" value="${r.secondesChoix}"></div>
+    <div><label for="r-so">Secondes par question ouverte</label><input id="r-so" type="number" name="secondesOuvertes" min="15" max="900" value="${r.secondesOuvertes}"></div>
+    <div><label for="r-scal">Secondes par calcul (maths)</label><input id="r-scal" type="number" name="secondesCalcul" min="30" max="1200" value="${r.secondesCalcul ?? 180}"></div>
+  </div>`;
 async function ecranReglages(id) {
   const p = (etat.profil = await api("/profils/" + id));
   const r = reglagesDe(p);
+  const admin = !!etat.moi.admin, verrou = !!p.minuteurAdmin && !admin;
   app.innerHTML = `
     <div class="panel">
       <span class="etiquette">RÉGLAGES DE ${esc(p.nom.toUpperCase())}</span>
       <form id="form-reg">
         <h3>⏱ Minuteur</h3>
-        <label class="case"><input type="checkbox" name="minuteur" ${r.minuteur ? "checked" : ""}> Activer le temps limite par question</label>
-        <div id="zone-temps" class="mission">
-          <div><label for="r-sc">Secondes par question à choix</label><input id="r-sc" type="number" name="secondesChoix" min="10" max="300" value="${r.secondesChoix}"></div>
-          <div><label for="r-so">Secondes par question ouverte</label><input id="r-so" type="number" name="secondesOuvertes" min="15" max="600" value="${r.secondesOuvertes}"></div>
-        </div>
+        <fieldset id="zone-minuteur" class="sans-cadre" ${verrou ? "disabled" : ""}>
+          ${champsMinuteur(r)}
+        </fieldset>
+        ${verrou ? `<p class="bloc-indice">🔒 Le minuteur est réglé par l'admin : demande-lui pour le changer.</p>` : ""}
+        ${admin ? `<label class="case"><input type="checkbox" name="minuteurAdmin" ${p.minuteurAdmin ? "checked" : ""}> 🔒 Verrouiller le minuteur (l'élève ne peut plus le modifier)</label>` : ""}
         <p class="aide">Quand il reste 10 secondes, le contour du téléphone clignote en rouge.</p>
 
         <h3 style="margin-top:20px">❓ Nombre de questions</h3>
@@ -1112,22 +1121,23 @@ async function ecranReglages(id) {
     $("#pctm-lib").textContent = `${vm} % QCM / ${100 - vm} % questions ouvertes avec calcul`;
     $("#pctm-barre").style.width = vm + "%";
     $("#zone-temps").style.opacity = f.minuteur.checked ? 1 : 0.4;
-    f.secondesChoix.disabled = f.secondesOuvertes.disabled = !f.minuteur.checked;
+    f.secondesChoix.disabled = f.secondesOuvertes.disabled = f.secondesCalcul.disabled = !f.minuteur.checked;
   };
   f.addEventListener("input", maj);
   maj();
   $("#defaut").addEventListener("click", () => {
-    for (const [k, v] of Object.entries(REGLAGES_DEFAUT)) { if (k === "minuteur") f.minuteur.checked = v; else f[k].value = v; }
+    for (const [k, v] of Object.entries(REGLAGES_DEFAUT)) { if (verrou && ["minuteur", "secondesChoix", "secondesOuvertes", "secondesCalcul"].includes(k)) continue; if (k === "minuteur") f.minuteur.checked = v; else f[k].value = v; }
     maj();
   });
   f.addEventListener("submit", async (e) => {
     e.preventDefault();
     const body = { minuteur: f.minuteur.checked };
-    for (const k of ["secondesChoix", "secondesOuvertes", "nbRevision", "nbFinal", "pctQcm", "pctQcmMaths"]) body[k] = Number(f[k].value);
+    for (const k of ["secondesChoix", "secondesOuvertes", "secondesCalcul", "nbRevision", "nbFinal", "pctQcm", "pctQcmMaths"]) body[k] = Number(f[k].value);
+    if (admin) body.minuteurAdmin = f.minuteurAdmin.checked;
     try {
       etat.profil = await api(`/profils/${p.id}/reglages`, { method: "PUT", body });
       toast("Réglages enregistrés !");
-      location.hash = "#/profil/" + p.id;
+      location.hash = admin && etat.moi.profil?.id !== p.id ? "#/admin/compte/" + p.id : "#/profil/" + p.id;
     } catch (err) { toast(err.message, true); }
   });
 }
@@ -1285,7 +1295,7 @@ function afficherQuestion() {
   const positionner = q.type === "carte";
   const ouverte = !estChoix(q) && !frise && !positionner;
   const calcul = avecCalcul(z, q);
-  const duree = z.reg.minuteur ? (ouverte || frise || positionner ? z.reg.secondesOuvertes : z.reg.secondesChoix) * 1000 : 0;
+  const duree = z.reg.minuteur ? (calcul ? z.reg.secondesCalcul || 180 : ouverte || frise || positionner ? z.reg.secondesOuvertes : z.reg.secondesChoix) * 1000 : 0;
   let repondue = false, ordreChoisi = [], choixCarte = null;
   const indice = indiceDe(q, z.matiere);
   const montrerIndice = () => {
@@ -2418,6 +2428,14 @@ async function ecranAdmin() {
       <div class="stat"><div class="val">${total}</div><div class="lib">révisions au total</div></div>
       <div class="stat"><div class="val">${comptes.reduce((a, c) => a + c.tests, 0)}</div><div class="lib">examens</div></div>
     </div>
+    <details class="panel" id="admin-minuteur"><summary><strong>⏱ Minuteur des questions pour tous les comptes</strong></summary>
+      <form id="form-minuteur-tous" style="margin-top:12px">
+        ${champsMinuteur(REGLAGES_DEFAUT)}
+        <label class="case"><input type="checkbox" name="verrou" checked> 🔒 Verrouiller (les élèves ne peuvent plus le modifier)</label>
+        <div class="actions"><button class="btn rouge">Appliquer à tous les comptes (${comptes.length})</button></div>
+        <p class="aide">Pour un seul élève : ouvre son compte dans la liste, puis « Régler le minuteur ».</p>
+      </form>
+    </details>
     <div class="panel">
       <span class="etiquette">TOUS LES COMPTES</span>
       <input id="admin-filtre" placeholder="🔎 Chercher un nom, une école, une matière…" style="margin-bottom:14px">
@@ -2440,6 +2458,17 @@ async function ecranAdmin() {
               <td>${ligneRes(c)}</td>
               <td>${fmtDate(c.derniereActivite)}</td></tr>`).join("")}</tbody></table></div>`}
     </div>`;
+  const fm = $("#form-minuteur-tous");
+  const majFm = () => { $("#admin-minuteur #zone-temps").style.opacity = fm.minuteur.checked ? 1 : 0.4; for (const k of ["secondesChoix", "secondesOuvertes", "secondesCalcul"]) fm[k].disabled = !fm.minuteur.checked; };
+  fm.addEventListener("input", majFm); majFm();
+  fm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!confirm(`Appliquer ce minuteur aux ${comptes.length} comptes ?`)) return;
+    try {
+      const r = await api("/admin/minuteur", { method: "POST", body: { minuteur: fm.minuteur.checked, secondesChoix: Number(fm.secondesChoix.value), secondesOuvertes: Number(fm.secondesOuvertes.value), secondesCalcul: Number(fm.secondesCalcul.value), verrou: fm.verrou.checked } });
+      toast(`Minuteur appliqué à ${r.comptes} compte${r.comptes > 1 ? "s" : ""}.`);
+    } catch (err) { toast(err.message, true); }
+  });
   $("#admin-out").addEventListener("click", async () => { await api("/admin/deconnexion", { method: "POST" }); etat.moi.admin = false; location.hash = "#/"; });
   $("#admin-restaurer").addEventListener("change", async (e) => {
     const f = e.target.files[0]; e.target.value = "";
@@ -2463,6 +2492,10 @@ async function ecranAdminCompte(id) {
     <div class="actions" style="margin:0 0 16px"><a class="btn blanc petit" href="#/admin">◀ Tous les comptes</a></div>
     ${S.entete(p, { lectureSeule: true })}
     <p class="aide">Compte créé le ${fmtDate(p.cree)}${p.derniereConnexion ? ` · dernière connexion le ${fmtDate(p.derniereConnexion)}` : ""} · mission actuelle : ${esc(p.matiere || "—")}${p.sujet ? " / " + esc(p.sujet) : ""}</p>
+    <div class="panel"><span class="etiquette">⏱ MINUTEUR DES QUESTIONS</span>
+      <p>${esc(resumeReglages(reglagesDe(p)).split(" · ")[0])}${p.minuteurAdmin ? " · 🔒 verrouillé par l'admin" : " · l'élève peut le modifier"}</p>
+      <div class="actions" style="margin:0"><a class="btn petit" href="#/profil/${p.id}/reglages">⏱ Régler le minuteur et les questions</a></div>
+    </div>
     ${vueProgres(p)}
     ${S.photos(p, { lectureSeule: true })}
     <div class="panel"><span class="etiquette">GESTION DU COMPTE</span>

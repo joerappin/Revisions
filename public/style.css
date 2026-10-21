@@ -603,3 +603,7 @@ button.btn-indice:hover { transform: translate(-1px, -1px); box-shadow: 3px 3px 
 .visuel-costume img { display: block; margin: 6px auto; width: min(220px, 62%); height: auto; filter: drop-shadow(4px 4px 0 var(--encre)); }
 .galerie-drapeaux:has(figure.costume) { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); max-height: none; }
 .galerie-drapeaux figure.costume img { aspect-ratio: auto; border: 0; object-fit: contain; }
+
+fieldset.sans-cadre { border: 0; padding: 0; margin: 0; min-width: 0; }
+fieldset.sans-cadre:disabled { opacity: .55; }
+#admin-minuteur summary { cursor: pointer; }
