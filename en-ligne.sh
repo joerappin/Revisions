@@ -32,6 +32,12 @@ gh api "${ARGS[@]}" --jq .commit.sha >> "$LOG/tunnel.log" 2>&1 || echo "$(date) 
 echo "$(date) ReviZ en ligne : $URL" >> "$LOG/tunnel.log"
 
 # Si l'un des deux s'arrête, on arrête tout : launchd relance le script.
-while kill -0 $TUNNEL 2>/dev/null && kill -0 $SERVEUR 2>/dev/null; do sleep 10; done
+# Après une mise en veille, le tunnel peut rester « vivant » sans répondre : 3 échecs de suite → on relance tout.
+ECHECS=0
+while kill -0 $TUNNEL 2>/dev/null && kill -0 $SERVEUR 2>/dev/null; do
+  sleep 30
+  if curl -s -m 15 -o /dev/null -f "$URL/api/status"; then ECHECS=0; else ECHECS=$((ECHECS + 1)); fi
+  [[ $ECHECS -ge 3 ]] && { echo "$(date) tunnel muet, redémarrage" >> "$LOG/tunnel.log"; break; }
+done
 kill $TUNNEL $SERVEUR 2>/dev/null
 exit 1
