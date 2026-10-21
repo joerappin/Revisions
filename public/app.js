@@ -613,6 +613,25 @@ async function ecranFormulaire(p) {
 }
 
 // ================= Écran : tableau de bord du profil =================
+// Chronomètre du temps ACTIF : les moments où l'onglet est caché ne comptent pas.
+function chrono() {
+  let total = 0, depuis = document.hidden ? null : Date.now();
+  const suivre = () => {
+    if (document.hidden) { if (depuis) { total += Date.now() - depuis; depuis = null; } }
+    else if (!depuis) depuis = Date.now();
+  };
+  document.addEventListener("visibilitychange", suivre);
+  return {
+    secondes: () => Math.round((total + (depuis ? Date.now() - depuis : 0)) / 1000),
+    arreter() { suivre(); document.removeEventListener("visibilitychange", suivre); return Math.round(total / 1000 + (depuis ? (Date.now() - depuis) / 1000 : 0)); },
+  };
+}
+function fmtDuree(sec) {
+  if (!sec) return "–";
+  const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+  return h ? `${h} h ${String(m).padStart(2, "0")}` : m ? `${m} min ${String(s).padStart(2, "0")} s` : `${s} s`;
+}
+const dureeMoyenne = (ss) => { const d = ss.map((x) => x.duree).filter(Boolean); return d.length ? Math.round(d.reduce((a, b) => a + b, 0) / d.length) : null; };
 function rang(pct) { return pct >= 90 ? "S" : pct >= 80 ? "A" : pct >= 70 ? "B" : pct >= 60 ? "C" : "D"; }
 // Graphique de progression : points reliés, une courbe par type d'évaluation.
 // Révision = violet, ronds, pointillé · Examen = bleu, losanges, trait plein · point vert = plus de 81 %.
@@ -746,6 +765,10 @@ const S = {
       <div class="stat moy"><div class="val">${fmtPct(moyenneDe(ss))}</div><div class="lib">moyenne globale</div></div>
       <div class="stat"><div class="val">${fmtPct(moyenneDe(rev))}</div><div class="lib">moyenne des révisions</div></div>
       <div class="stat"><div class="val">${fmtPct(moyenneDe(exa))}</div><div class="lib">moyenne des examens</div></div>
+      <div class="temps-moyens"><strong>⏱ Temps moyen</strong>
+        <span>📖 leçon : <strong>${fmtDuree(dureeMoyenne(ss.filter((x) => x.type === "lecon")))}</strong></span>
+        <span>⚡ révision : <strong>${fmtDuree(dureeMoyenne(rev))}</strong></span>
+        <span>⚔️ examen : <strong>${fmtDuree(dureeMoyenne(exa))}</strong></span></div>
     </div>`;
   },
   photos: (p, { lectureSeule = false } = {}) => `
@@ -931,12 +954,12 @@ function contenuProgres(p) {
     ${etat.mobile
       ? `<div class="liste-sessions">${hist.map((x) => `<div class="carte-session ligne-matiere" style="--c:${couleurMatiere(x.matiere)}">
           <div class="haut-session">${caseL(x)}<span class="badge ${x.type}">${libType(x)}</span><strong class="pct">${x.type === "lecon" ? "📖" : x.pourcentage + " %"}</strong>${corbeille(x)}</div>
-          <div>${esc(x.sujet)}</div><div class="aide">${esc(x.matiere)} · ${fmtDate(x.date)}${x.type === "lecon" ? "" : ` · ${fmtPoints(x.score)}/${x.total}`}</div>${revoir(x)}</div>`).join("")}</div>`
+          <div>${esc(x.sujet)}</div><div class="aide">${esc(x.matiere)} · ${fmtDate(x.date)}${x.type === "lecon" ? "" : ` · ${fmtPoints(x.score)}/${x.total}`}${x.duree ? ` · ⏱ ${fmtDuree(x.duree)}` : ""}</div>${revoir(x)}</div>`).join("")}</div>`
       : `<div class="table-scroll"><table class="historique">
-          <thead><tr>${admin ? "<th></th>" : ""}<th>Date</th><th>Type</th><th>Matière</th><th>Leçon</th><th>Résultat</th><th></th>${admin ? "<th></th>" : ""}</tr></thead>
+          <thead><tr>${admin ? "<th></th>" : ""}<th>Date</th><th>Type</th><th>Matière</th><th>Leçon</th><th>Résultat</th><th>Durée</th><th></th>${admin ? "<th></th>" : ""}</tr></thead>
           <tbody>${hist.map((x) => `<tr class="ligne-matiere" style="--c:${couleurMatiere(x.matiere)}">
             ${admin ? `<td>${caseL(x)}</td>` : ""}<td>${fmtDate(x.date)}</td><td><span class="badge ${x.type}">${libType(x)}</span></td>
-            <td>${badgeMatiere(x.matiere)}</td><td>${esc(x.sujet)}</td><td>${resultat(x)}</td><td>${revoir(x)}</td>${admin ? `<td>${corbeille(x)}</td>` : ""}</tr>`).join("")}</tbody></table></div>`}`;
+            <td>${badgeMatiere(x.matiere)}</td><td>${esc(x.sujet)}</td><td>${resultat(x)}</td><td>${fmtDuree(x.duree)}</td><td>${revoir(x)}</td>${admin ? `<td>${corbeille(x)}</td>` : ""}</tr>`).join("")}</tbody></table></div>`}`;
   return filtres + S.stats({ ...p, sessions: dansMatiere }) + moyennes + `
     <div class="panel"><span class="etiquette">PROGRESSION${fm ? " · " + esc(fm).toUpperCase() : ""}</span>
       ${ft === "lecon" ? "" : graphique(choisies)}
@@ -1007,6 +1030,7 @@ function contenuMesLecons(p) {
       <h3>${esc(l.sujet)}</h3>
       <div>${l.lectures.length ? `📖 Lue <strong>${l.lectures.length}×</strong> · dernière fois le ${fmtDate(l.lectures.at(-1).date)}` : "📖 Pas encore lue jusqu'au bout"}</div>
       <div>⚡ ${l.revisions.length} révision${l.revisions.length > 1 ? "s" : ""} (moy. ${moy(l.revisions)}) · ⚔️ ${l.examens.length} examen${l.examens.length > 1 ? "s" : ""} (moy. ${moy(l.examens)})</div>
+      <div class="aide">⏱ Temps moyen · leçon ${fmtDuree(dureeMoyenne(l.lectures))} · révision ${fmtDuree(dureeMoyenne(l.revisions))} · examen ${fmtDuree(dureeMoyenne(l.examens))}</div>
       <div class="actions" style="margin-top:10px">
         <button class="btn petit" data-ouvrir-lecon="${esc(l.matiere)}|${esc(l.sujet)}|lecon">📖 Revoir la leçon</button>
         <button class="btn blanc petit" data-ouvrir-lecon="${esc(l.matiere)}|${esc(l.sujet)}|test">⚔️ Révision</button>
@@ -1271,7 +1295,7 @@ function demarrerQuiz({ type, questions, matiere, sujet, sources, photo = false 
   if (!questions?.length) { toast("Aucune question reçue, réessaie.", true); return; }
   const reg = reglagesDe(etat.profil);
   etat.quiz = {
-    type, matiere, sujet, sources, reg, photo, i: 0, reponses: [], calculs: [], resultats: [], indices: [], triches: [],
+    type, matiere, sujet, sources, reg, photo, i: 0, reponses: [], calculs: [], resultats: [], indices: [], triches: [], temps: chrono(),
     questions: questions.map((q) => ({ ...q, choix: q.type === "qcm" ? melange(q.choix) : q.choix, melanges: q.type === "ordre" ? melange(q.elements) : [] })),
   };
   afficherQuestion();
@@ -1484,6 +1508,7 @@ function popupTriche(ensuite) {
 
 async function terminerQuiz() {
   const z = etat.quiz, p = etat.profil;
+  const duree = z.temps?.arreter() || 0; // temps passé sur les questions (la correction ne compte pas)
   surOnglet = null;
   arreterMinuteur();
   sync.surAction = null;
@@ -1500,7 +1525,7 @@ async function terminerQuiz() {
   const erreurs = [...new Set(res.filter((r) => !r.ok).map((r) => r.q.notion))];
   let enregistre;
   try {
-    enregistre = await api(`/profils/${p.id}/resultats`, { method: "POST", body: { type: z.type, matiere: z.matiere, sujet: z.sujet, score, total, erreurs, photo: z.photo, details: res.map((x) => detailDe(x.q, x.rep, x.ok, x.commentaire, { calcul: x.calcul, points: x.points, orthographe: x.orthographe, indice_vu: x.indice_vu, triche: x.triche })) } });
+    enregistre = await api(`/profils/${p.id}/resultats`, { method: "POST", body: { type: z.type, matiere: z.matiere, sujet: z.sujet, score, total, erreurs, photo: z.photo, duree, details: res.map((x) => detailDe(x.q, x.rep, x.ok, x.commentaire, { calcul: x.calcul, points: x.points, orthographe: x.orthographe, indice_vu: x.indice_vu, triche: x.triche })) } });
     etat.profil = enregistre.profil;
   } catch (e) { toast("Résultat non enregistré : " + e.message, true); }
   if (z.type === "revision") sessionStorage.setItem("dejaVues", JSON.stringify(z.questions.map((q) => q.enonce)));
@@ -1516,6 +1541,7 @@ async function terminerQuiz() {
         <div>
           <div class="gros-score">${pct} %</div>
           <div><strong>${fmtPoints(score)} / ${total}</strong> points</div>
+          <div>⏱ Temps : <strong>${fmtDuree(duree)}</strong></div>
           ${enregistre ? `<div>Résultat enregistré dans ton historique 💾</div>` : ""}
         </div>
       </div>
@@ -1651,9 +1677,10 @@ function diapos(f, matiere) {
 function diaporama(zone, f, matiere, { onFin, finHTML, profil }) {
   const liste = [...diapos(f, matiere), { titre: "Bravo !", html: "", fin: true }];
   let i = 0, finAtteinte = false;
+  const temps = chrono(); // temps de lecture de la leçon
   const rendre = async () => {
     const d = liste[i], n = liste.length;
-    if (d.fin && !finAtteinte) { finAtteinte = true; await onFin?.(); }
+    if (d.fin && !finAtteinte) { finAtteinte = true; await onFin?.(temps.arreter()); }
     zone.innerHTML = `
       <div class="diapo-progres"><div style="width:${((i + 1) / n) * 100}%"></div></div>
       <div class="diapo-points">${liste.map((_, k) => `<span class="${k < i ? "lu" : k === i ? "ici" : ""}"></span>`).join("")}</div>
@@ -1700,9 +1727,10 @@ async function ongletLecon(p, zone, nouvelle = false) {
   prechauffer(p, "final"); // le test final se prépare pendant la lecture
   diaporama(zone, data.fiche, p.matiere, {
     profil: p,
-    onFin: async () => {
+    onFin: async (duree) => {
+      etat.dureeLecture = duree;
       try {
-        const r = await api(`/profils/${p.id}/resultats`, { method: "POST", body: { type: "lecon", matiere: p.matiere, sujet: p.sujet } });
+        const r = await api(`/profils/${p.id}/resultats`, { method: "POST", body: { type: "lecon", matiere: p.matiere, sujet: p.sujet, duree } });
         Object.assign(p, r.profil); etat.profil = p; if (etat.moi.profil?.id === p.id) etat.moi.profil = r.profil;
         $(".entete-lecon p").innerHTML = esc(p.annee) + " · " + resumeLecon(p, p.matiere, p.sujet);
       } catch (err) { toast("Leçon non enregistrée : " + err.message, true); }
@@ -1711,6 +1739,7 @@ async function ongletLecon(p, zone, nouvelle = false) {
       <div class="tel-centre">
         <div class="eclat">BRAVO !</div>
         <h2>Leçon terminée ✔</h2>
+        <p>⏱ Temps de lecture : <strong>${fmtDuree(etat.dureeLecture)}</strong>.</p>
         <p>Tu as lu toute la leçon (${historiqueLecon(p, p.matiere, p.sujet).lecons.length} fois au total). La <strong>révision</strong> est débloquée !</p>
         <div class="actions" style="justify-content:center">
           <a class="btn rouge" href="#/profil/${p.id}/test">⚡ Passer à la révision</a>
@@ -1730,6 +1759,7 @@ async function ongletLecon(p, zone, nouvelle = false) {
 function lignesHistorique(p, tests) {
   return tests.map((t, i) => `<tr><td>${i + 1}</td><td>${fmtDate(t.date)}</td><td><span class="badge ${t.type}">${libType(t)}</span></td>
     <td><strong class="${t.pourcentage >= 60 ? "ok" : "ko"}">${t.pourcentage} %</strong> (${fmtPoints(t.score)}/${t.total})</td>
+    <td>${fmtDuree(t.duree)}</td>
     <td>${t.details?.length ? `<a class="btn blanc petit" href="#/profil/${p.id}/evaluation/${t.id}">👁 Revoir</a>` : ""}</td></tr>`).reverse().join("");
 }
 async function ongletTest(p, zone) {
@@ -1760,7 +1790,7 @@ async function ongletTest(p, zone) {
         <div class="stat"><div class="val">${fmtPct(moyenneDe(tests))}</div><div class="lib">moyenne</div></div>
       </div>
       <p>${leconLue ? `📖 Leçon lue <strong>${lecons.length} fois</strong> : ${lecons.map((l) => fmtDate(l.date)).join(", ")}.` : `📖 Leçon pas encore lue.`}</p>
-      ${tests.length ? `<div class="table-scroll"><table class="historique"><thead><tr><th>#</th><th>Date</th><th>Type</th><th>Score</th><th></th></tr></thead><tbody>
+      ${tests.length ? `<div class="table-scroll"><table class="historique"><thead><tr><th>#</th><th>Date</th><th>Type</th><th>Score</th><th>Durée</th><th></th></tr></thead><tbody>
         ${lignesHistorique(p, tests)}</tbody></table></div>` : `<p class="vide">Aucune révision ni examen pour l'instant.</p>`}
     </div>
     ${sync.actif ? `<p class="aide" data-sync-statut></p>` : ""}`;
@@ -1871,7 +1901,7 @@ async function ecranEvaluation(id, sid) {
         <div class="rang ${r}">${r}</div>
         <div>
           <div class="gros-score">${s.pourcentage} %</div>
-          <div><strong>${fmtPoints(s.score)} / ${s.total}</strong> · ${esc(libType(s))} · ${fmtDate(s.date)}</div>
+          <div><strong>${fmtPoints(s.score)} / ${s.total}</strong> · ${esc(libType(s))} · ${fmtDate(s.date)}${s.duree ? ` · ⏱ ${fmtDuree(s.duree)}` : ""}</div>
           <div>${esc(s.matiere)} · ${esc(s.sujet)}</div>
         </div>
       </div>

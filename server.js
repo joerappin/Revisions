@@ -1146,6 +1146,7 @@ async function api(req, res, url) {
         id: newId(), type, photo: !!b.photo,
         matiere: String(b.matiere || "").slice(0, 100), sujet: String(b.sujet || "").slice(0, 150),
         score, total, pourcentage: type === "lecon" ? null : Math.round((score / total) * 100),
+        duree: Math.max(0, Math.min(6 * 3600, Math.round(Number(b.duree) || 0))) || null, // temps actif en secondes (leçon, révision ou examen)
         erreurs: (Array.isArray(b.erreurs) ? b.erreurs : []).map((e) => String(e).slice(0, 80)).slice(0, 30),
         // Détail de chaque question (réponse donnée, bonne réponse, correction) pour que l'élève puisse revoir son évaluation.
         details: (Array.isArray(b.details) ? b.details : []).slice(0, 40).map((d) => ({

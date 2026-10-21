@@ -607,3 +607,5 @@ button.btn-indice:hover { transform: translate(-1px, -1px); box-shadow: 3px 3px 
 fieldset.sans-cadre { border: 0; padding: 0; margin: 0; min-width: 0; }
 fieldset.sans-cadre:disabled { opacity: .55; }
 #admin-minuteur summary { cursor: pointer; }
+
+.temps-moyens { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; padding: 8px 12px; border: 3px solid var(--encre); background: var(--blanc); }
