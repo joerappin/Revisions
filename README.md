@@ -12,14 +12,12 @@ npm start
 Le terminal affiche l'adresse à ouvrir, par ex. `http://192.168.2.114:3000`, sur la tablette, le téléphone ou l'ordinateur de l'ado.
 (Au premier lancement, macOS peut demander d'autoriser « node » à accepter les connexions entrantes : clique sur **Autoriser**.)
 
-## ReviZ en ligne gratuitement (lien fixe)
+## ReviZ sur le Wi-Fi de la maison (mode actuel)
 
-**https://joerappin.github.io/Revisions/** ouvre ReviZ depuis n'importe où.
-
-- Le site tourne sur le Mac (copie dans `~/ReviZ`, données dans `~/ReviZ/data`), lancé automatiquement à l'ouverture de session par `~/Library/LaunchAgents/com.reviz.enligne.plist`, qui exécute `en-ligne.sh`.
-- `en-ligne.sh` récupère la dernière version sur GitHub, empêche la veille, ouvre un tunnel Cloudflare gratuit et met à jour la page GitHub Pages (branche `gh-pages`) avec l'adresse du tunnel.
-- Le Mac doit rester allumé (couvercle ouvert ou branché sur un écran).
-- Relancer : `launchctl kickstart -k gui/$(id -u)/com.reviz.enligne` ; arrêter : `launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.reviz.enligne.plist`.
+- Le site tourne sur le Mac (copie dans `~/ReviZ`, données dans `~/ReviZ/data`) et n'est accessible que sur le Wi-Fi de la maison : **http://MacBook-Air-de-Joe.local:3000** (ou l'adresse numérique du Mac, ex. http://192.168.2.122:3000).
+- Lancé automatiquement à l'ouverture de session par `~/Library/LaunchAgents/com.reviz.local.plist`, qui exécute `en-local.sh` (récupère la dernière version sur GitHub, empêche la veille, relance le serveur s'il ne répond plus).
+- App **« Relancer ReviZ »** (Dock, Bureau, `~/Applications`) : affiche 🟢 connecté / 🔴 déconnecté, l'adresse à ouvrir, et un bouton Relancer.
+- https://joerappin.github.io/Revisions/ affiche l'adresse locale. (Le mode « en ligne » par tunnel, `en-ligne.sh`, est désactivé.)
 
 ## Mettre ReviZ en ligne sans le Mac (Render, payant)
 
