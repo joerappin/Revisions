@@ -58,9 +58,79 @@ function sauverSurGit() {
     });
   }));
 }
-if (gitEnv) {
-  setInterval(sauverSurGit, 20e3);
-  for (const sig of ["SIGTERM", "SIGINT"]) process.on(sig, async () => { await sauverSurGit(); process.exit(0); });
+
+// ---------- Données gardées sur Hostinger par FTP (autre option d'hébergement gratuit sans disque) ----------
+// DONNEES_FTP = ftp://utilisateur:motdepasse@hote/dossier (dossier hors public_html : jamais visible sur le web).
+// Au démarrage, tout le dossier est téléchargé; ensuite seuls les fichiers modifiés sont envoyés (toutes les 20 s et à l'arrêt).
+let ftpCfg = null;
+let ftpEtat = new Map(); // chemin relatif → "taille:date" au dernier envoi réussi
+async function connecterFtp() {
+  const { Client } = await import("basic-ftp");
+  const client = new Client(30e3);
+  await client.access({ host: ftpCfg.host, port: ftpCfg.port, user: ftpCfg.user, password: ftpCfg.password });
+  return client;
+}
+function scannerDonnees(dir = DATA, base = "", etat = new Map()) {
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    const rel = base ? `${base}/${e.name}` : e.name;
+    if (e.isDirectory()) scannerDonnees(path.join(dir, e.name), rel, etat);
+    else if (e.isFile() && !e.name.endsWith(".tmp") && e.name !== "serveur.log") {
+      const st = fs.statSync(path.join(dir, e.name));
+      etat.set(rel, `${st.size}:${st.mtimeMs}`);
+    }
+  }
+  return etat;
+}
+if (process.env.DONNEES_FTP) {
+  const u = new URL(process.env.DONNEES_FTP);
+  ftpCfg = {
+    host: u.hostname, port: Number(u.port) || 21,
+    user: decodeURIComponent(u.username), password: decodeURIComponent(u.password),
+    dossier: decodeURIComponent(u.pathname).replace(/\/$/, "") || "/",
+  };
+  const client = await connecterFtp();
+  try {
+    await client.ensureDir(ftpCfg.dossier);
+    fs.rmSync(DATA, { recursive: true, force: true });
+    fs.mkdirSync(DATA, { recursive: true });
+    await client.downloadToDir(DATA);
+  } finally { client.close(); }
+  ftpEtat = scannerDonnees();
+  console.log(`  Données récupérées depuis Hostinger (${ftpEtat.size} fichiers)`);
+}
+let envoiFtpEnCours = null;
+function sauverSurFtp() {
+  if (!ftpCfg) return Promise.resolve();
+  return (envoiFtpEnCours ||= (async () => {
+    let client;
+    try {
+      const actuel = scannerDonnees();
+      const modifies = [...actuel].filter(([rel, sig]) => ftpEtat.get(rel) !== sig).map(([rel]) => rel);
+      const supprimes = [...ftpEtat.keys()].filter((rel) => !actuel.has(rel));
+      if (!modifies.length && !supprimes.length) return;
+      client = await connecterFtp();
+      for (const rel of modifies) {
+        await client.ensureDir(path.posix.join(ftpCfg.dossier, path.posix.dirname(rel)));
+        await client.uploadFrom(path.join(DATA, rel), path.posix.basename(rel));
+        ftpEtat.set(rel, actuel.get(rel));
+      }
+      for (const rel of supprimes) {
+        await client.remove(path.posix.join(ftpCfg.dossier, rel)).catch(() => {});
+        ftpEtat.delete(rel);
+      }
+    } catch (err) {
+      console.error("Sauvegarde Hostinger impossible :", err.message);
+    } finally {
+      client?.close();
+      envoiFtpEnCours = null;
+    }
+  })());
+}
+
+const sauvegarder = () => Promise.all([sauverSurGit(), sauverSurFtp()]);
+if (gitEnv || ftpCfg) {
+  setInterval(sauvegarder, 20e3);
+  for (const sig of ["SIGTERM", "SIGINT"]) process.on(sig, async () => { await sauvegarder(); process.exit(0); });
 }
 
 const AVATARS = path.join(DATA, "avatars"); // photos de profil (nom aléatoire, affichées aussi sur le téléphone-télécommande)
