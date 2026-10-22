@@ -8,6 +8,7 @@ import crypto from "node:crypto";
 import zlib from "node:zlib";
 import { execFile, execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { Readable } from "node:stream";
 import Anthropic from "@anthropic-ai/sdk";
 import QRCode from "qrcode";
 import { carteDepuisRequete } from "./carto.js";
@@ -91,6 +92,8 @@ if (process.env.DONNEES_FTP) {
   const client = await connecterFtp();
   try {
     await client.ensureDir(ftpCfg.dossier);
+    // Interdit l'accès web au dossier, au cas où il serait placé dans public_html.
+    await client.uploadFrom(Readable.from(["Require all denied\n"]), ".htaccess");
     fs.rmSync(DATA, { recursive: true, force: true });
     fs.mkdirSync(DATA, { recursive: true });
     await client.downloadToDir(DATA);
