@@ -20,7 +20,7 @@
   <h1>ReviZ ⚡</h1>
   <p>Ouverture du site de révision…</p>
   <p><a id="lien" href="__URL__/">Entrer dans ReviZ ▶</a></p>
-  <p style="font-size:14px;opacity:.7">Si la page ne s'ouvre pas, l'ordinateur qui héberge ReviZ est peut-être éteint.</p>
+  <p style="font-size:14px;opacity:.7">Sur le Wi-Fi de la maison, tu peux aussi ouvrir MacBook-Air-de-Joe.local:3000</p>
 </main>
 <script>
   // Le serveur gratuit s'endort quand personne ne l'utilise : on attend qu'il se réveille (jusqu'à une minute).
@@ -31,8 +31,9 @@
       const r = await fetch(cible + "/api/status", { cache: "no-store" });
       if (r.ok) return location.replace(cible + "/" + location.hash);
     } catch {}
-    if (n === 2) msg.textContent = "Réveil du serveur… (jusqu'à une minute la première fois)";
-    setTimeout(() => essai(n + 1), 3000);
+    if (n === 2) msg.textContent = "Connexion au serveur de ReviZ…";
+    if (n === 8) msg.innerHTML = "Le site ne répond pas par internet pour l'instant (l'ordinateur qui l'héberge est peut-être éteint ou en veille).<br>Sur le Wi-Fi de la maison : <a href='http://MacBook-Air-de-Joe.local:3000/'>MacBook-Air-de-Joe.local:3000</a>";
+    setTimeout(() => essai(n + 1), n < 8 ? 3000 : 10000);
   };
   essai(0);
 </script>

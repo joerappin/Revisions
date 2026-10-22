@@ -798,7 +798,11 @@ const peutVoir = (sess, profilId) => !!sess && (sess.admin || sess.profilId === 
 
 // Anti-devinette : 8 échecs en 10 minutes par adresse bloquent les connexions un moment.
 const echecs = new Map();
-const ipDe = (req) => (URL_PUBLIQUE && String(req.headers["x-forwarded-for"] || "").split(",")[0].trim()) || req.socket.remoteAddress;
+// Derrière le tunnel (requête arrivée par la boucle locale) ou un hébergeur, la vraie adresse est dans les en-têtes.
+const ipDe = (req) => {
+  const a = req.socket.remoteAddress || "", proxy = URL_PUBLIQUE || /^(::1|127\.|::ffff:127\.)/.test(a);
+  return (proxy && String(req.headers["cf-connecting-ip"] || req.headers["x-forwarded-for"] || "").split(",")[0].trim()) || a;
+};
 function bloque(req) {
   const e = echecs.get(ipDe(req));
   return !!e && e.n >= 8 && Date.now() - e.t < 10 * 60e3;
