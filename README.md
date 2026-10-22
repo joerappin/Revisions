@@ -12,12 +12,15 @@ npm start
 Le terminal affiche l'adresse à ouvrir, par ex. `http://192.168.2.114:3000`, sur la tablette, le téléphone ou l'ordinateur de l'ado.
 (Au premier lancement, macOS peut demander d'autoriser « node » à accepter les connexions entrantes : clique sur **Autoriser**.)
 
-## ReviZ sur le Wi-Fi de la maison (mode actuel)
+## ReviZ sur le Wi-Fi et par internet (mode actuel)
 
-- Le site tourne sur le Mac (copie dans `~/ReviZ`, données dans `~/ReviZ/data`) et n'est accessible que sur le Wi-Fi de la maison : **http://MacBook-Air-de-Joe.local:3000** (ou l'adresse numérique du Mac, ex. http://192.168.2.122:3000).
-- Lancé automatiquement à l'ouverture de session par `~/Library/LaunchAgents/com.reviz.local.plist`, qui exécute `en-local.sh` (récupère la dernière version sur GitHub, empêche la veille, relance le serveur s'il ne répond plus).
-- App **« Relancer ReviZ »** (Dock, Bureau, `~/Applications`) : affiche 🟢 connecté / 🔴 déconnecté, l'adresse à ouvrir, et un bouton Relancer.
-- https://joerappin.github.io/Revisions/ affiche l'adresse locale. (Le mode « en ligne » par tunnel, `en-ligne.sh`, est désactivé.)
+- **Partout (internet)** : **https://joerappin.github.io/Revisions/** redirige vers le site (tunnel Cloudflare gratuit vers le Mac).
+- **Sur le Wi-Fi de la maison** : **http://MacBook-Air-de-Joe.local:3000** (ou l'adresse numérique du Mac, ex. http://192.168.2.122:3000).
+- Deux services démarrent à l'ouverture de session, indépendants l'un de l'autre :
+  - `com.reviz.local` → `en-local.sh` : récupère la dernière version sur GitHub, empêche la veille, lance le serveur et le relance s'il ne répond plus;
+  - `com.reviz.tunnel` → `en-tunnel.sh` : ouvre le tunnel, met à jour le lien fixe (branche `gh-pages`), et relance seulement le tunnel s'il ne répond plus (le site local n'est jamais coupé).
+- App **« Relancer ReviZ »** (Dock, Bureau, `~/Applications`) : affiche 🟢/🔴 pour le Wi-Fi et pour internet, et relance les deux.
+- Le Mac doit rester allumé (couvercle ouvert ou branché sur un écran). Le tunnel gratuit n'a pas de garantie de disponibilité.
 
 ## Mettre ReviZ en ligne sans le Mac (Render, payant)
 
