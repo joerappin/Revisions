@@ -5,24 +5,37 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ReviZ</title>
 <style>
-  :root { --fond: #fffbe8; --encre: #111; --rouge: #e63946; --carte: #fff; }
-  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --fond: #1b1b1f; --encre: #f5f5f5; --carte: #26262b; } }
-  :root[data-theme="dark"] { --fond: #1b1b1f; --encre: #f5f5f5; --carte: #26262b; }
+  :root { --fond: #fffbe8; --encre: #111; --rouge: #e63946; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --fond: #1b1b1f; --encre: #f5f5f5; } }
+  :root[data-theme="dark"] { --fond: #1b1b1f; --encre: #f5f5f5; }
   body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 16px; box-sizing: border-box;
     background: var(--fond); color: var(--encre); font: 18px/1.5 system-ui, sans-serif; text-align: center; }
-  main { max-width: 520px; background: var(--carte); border: 3px solid var(--encre); border-radius: 14px; padding: 24px 20px; box-shadow: 6px 6px 0 var(--encre); }
-  h1 { font-size: 44px; margin: 0 0 6px; }
-  a.btn { display: inline-block; margin: 6px 0; padding: 12px 20px; border: 3px solid var(--encre); border-radius: 12px;
-    background: var(--rouge); color: #fff; font-weight: 700; text-decoration: none; box-shadow: 4px 4px 0 var(--encre); word-break: break-all; }
-  p.petit { font-size: 14px; opacity: .75; }
+  h1 { font-size: 48px; margin: 0 0 8px; }
+  a { display: inline-block; padding: 12px 22px; border: 3px solid var(--encre); border-radius: 12px;
+    background: var(--rouge); color: #fff; font-weight: 700; text-decoration: none; box-shadow: 4px 4px 0 var(--encre); }
 </style>
 </head>
 <body>
 <main>
   <h1>ReviZ ⚡</h1>
-  <p>ReviZ fonctionne sur le <strong>Wi-Fi de la maison</strong>. Connecte ton téléphone ou ton ordinateur à ce Wi-Fi, puis ouvre :</p>
-  <p><a class="btn" href="http://MacBook-Air-de-Joe.local:3000/">MacBook-Air-de-Joe.local:3000</a></p>
-  <p class="petit">Si le lien ne s'ouvre pas : sur le Mac, clique sur « Relancer ReviZ » dans le Dock. La fenêtre affiche si le site est connecté et donne aussi son adresse numérique (par exemple http://192.168.2.122:3000).</p>
+  <p>Ouverture du site de révision…</p>
+  <p><a id="lien" href="https://conferences-unlike-specially-cardiff.trycloudflare.com/">Entrer dans ReviZ ▶</a></p>
+  <p style="font-size:14px;opacity:.7">Sur le Wi-Fi de la maison, tu peux aussi ouvrir MacBook-Air-de-Joe.local:3000</p>
 </main>
+<script>
+  // Le serveur gratuit s'endort quand personne ne l'utilise : on attend qu'il se réveille (jusqu'à une minute).
+  const cible = "https://conferences-unlike-specially-cardiff.trycloudflare.com";
+  const msg = document.querySelector("main p");
+  const essai = async (n) => {
+    try {
+      const r = await fetch(cible + "/api/status", { cache: "no-store" });
+      if (r.ok) return location.replace(cible + "/" + location.hash);
+    } catch {}
+    if (n === 2) msg.textContent = "Connexion au serveur de ReviZ…";
+    if (n === 8) msg.innerHTML = "Le site ne répond pas par internet pour l'instant (l'ordinateur qui l'héberge est peut-être éteint ou en veille).<br>Sur le Wi-Fi de la maison : <a href='http://MacBook-Air-de-Joe.local:3000/'>MacBook-Air-de-Joe.local:3000</a>";
+    setTimeout(() => essai(n + 1), n < 8 ? 3000 : 10000);
+  };
+  essai(0);
+</script>
 </body>
 </html>
