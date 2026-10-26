@@ -15,7 +15,7 @@ git pull -q --ff-only origin main 2>> "$LOG/tunnel.log"
 cloudflared tunnel --no-autoupdate --url http://localhost:3000 >> "$LOG/tunnel.log" 2>&1 &   # >> : les lignes ajoutées ensuite ne sont pas écrasées
 TUNNEL=$!
 for i in {1..60}; do
-  URL=$(grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' "$LOG/tunnel.log" | head -1)
+  URL=$(grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' "$LOG/tunnel.log" | grep -v '//api\.' | head -1)   # api. = message d'erreur, pas l'adresse
   [[ -n "$URL" ]] && break; sleep 1
 done
 [[ -z "$URL" ]] && { kill $TUNNEL; exit 1; }

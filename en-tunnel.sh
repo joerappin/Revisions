@@ -11,7 +11,7 @@ until curl -s -m 5 -o /dev/null -f http://localhost:3000/api/status; do sleep 3;
 cloudflared tunnel --no-autoupdate --url http://localhost:3000 >> "$LOG/tunnel.log" 2>&1 &
 TUNNEL=$!
 for i in {1..60}; do
-  URL=$(grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' "$LOG/tunnel.log" | head -1)
+  URL=$(grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' "$LOG/tunnel.log" | grep -v '//api\.' | head -1)   # api. = message d'erreur, pas l'adresse
   [[ -n "$URL" ]] && break; sleep 1
 done
 [[ -z "$URL" ]] && { kill $TUNNEL 2>/dev/null; exit 1; }
