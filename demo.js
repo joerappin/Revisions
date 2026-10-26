@@ -227,12 +227,22 @@ function avecVariantes(questions) {
   }
   return out;
 }
-function selection(questionsBrutes, n, pctQcm, vues = []) {
+// Dureté 1 à 5 (réglée par l'admin) : % de questions faciles / moyennes / difficiles visé.
+const MELANGE_DURETE = { 1: [60, 35, 5], 2: [45, 40, 15], 3: [30, 45, 25], 4: [15, 45, 40], 5: [5, 35, 60] };
+const ORDRE_SECOURS = { 1: ["facile", "moyen", "difficile"], 2: ["facile", "moyen", "difficile"], 3: ["moyen", "facile", "difficile"], 4: ["difficile", "moyen", "facile"], 5: ["difficile", "moyen", "facile"] };
+// Met en tête les questions qui respectent le mélange de difficultés (dans l'ordre de fraîcheur), puis les plus proches de la dureté.
+function selonDurete(qs, total, durete = 3) {
+  const mel = MELANGE_DURETE[durete] || MELANGE_DURETE[3], groupes = { facile: [], moyen: [], difficile: [] }, autres = [];
+  for (const x of qs) (groupes[x.difficulte] || autres).push(x);
+  const tete = ["facile", "moyen", "difficile"].flatMap((k, i) => groupes[k].splice(0, Math.round((total * mel[i]) / 100)));
+  return [...tete, ...(ORDRE_SECOURS[durete] || ORDRE_SECOURS[3]).flatMap((k) => groupes[k]), ...autres];
+}
+function selection(questionsBrutes, n, pctQcm, vues = [], durete = 3) {
   const vuesBases = new Set();
-  const questions = parFraicheur(avecVariantes(questionsBrutes), vues).filter((x) => (vuesBases.has(x._base) ? false : vuesBases.add(x._base)))
+  const uniques = parFraicheur(avecVariantes(questionsBrutes), vues).filter((x) => (vuesBases.has(x._base) ? false : vuesBases.add(x._base)))
     .map(({ _base, ...x }) => x);
+  const total = Math.min(n, uniques.length), questions = selonDurete(uniques, total, durete);
   let choix = questions.filter(estChoix), ouvertes = questions.filter((x) => !estChoix(x));
-  const total = Math.min(n, questions.length);
   // Pas assez de questions ouvertes : les QCM à réponse courte qui se comprennent sans les choix deviennent des questions à écrire.
   const manque = total - Math.round((total * pctQcm) / 100) - ouvertes.length;
   if (manque > 0) {
@@ -277,19 +287,18 @@ const enOuvertes = (questions) => questions.map((x) => x.type !== "qcm" || x.rep
 // Banque + (en maths) des questions générées avec de nouveaux nombres à chaque fois.
 // Algèbre : les questions fixes sont filtrées selon le niveau (1 : faciles; 2 : faciles + moyennes; 3-4 : toutes).
 const DIFF_PERMISES = { 1: ["facile"], 2: ["facile", "moyen"] };
-// Dureté réglée par l'admin : 1/5 retire les questions difficiles, 5/5 les faciles (s'il en reste assez).
-const DIFF_EXCLUE = { 1: "difficile", 5: "facile" };
-const selonDurete = (qs, n, durete) => { const g = qs.filter((x) => x.difficulte !== DIFF_EXCLUE[durete]); return g.length >= n ? g : qs; };
-const preparer = (b, pct, n = 10, { niveau, durete } = {}) => {
-  const fixes = b === ALGEBRE && DIFF_PERMISES[niveau] ? b.questions.filter((x) => DIFF_PERMISES[niveau].includes(x.difficulte)) : b.questions;
-  const qs = selonDurete(estMaths(b) ? [...fixes, ...questionsGenerees(b === ALGEBRE ? "algebre" : "fractions", Math.max(10, n + 6), { niveau })] : b.questions, n, durete);
+// Algèbre : la dureté réglée par l'admin décale le niveau visé (1/5 : 2 niveaux plus bas, 5/5 : 2 plus haut).
+const preparer = (b, pct, n = 10, { niveau, durete = 3 } = {}) => {
+  const nv = niveau ? Math.max(1, Math.min(4, niveau + durete - 3)) : niveau;
+  const fixes = b === ALGEBRE && DIFF_PERMISES[nv] ? b.questions.filter((x) => DIFF_PERMISES[nv].includes(x.difficulte)) : b.questions;
+  const qs = estMaths(b) ? [...fixes, ...questionsGenerees(b === ALGEBRE ? "algebre" : "fractions", Math.max(10, n + 6), { niveau: nv })] : b.questions;
   return estMaths(b) && pct <= 0 ? enOuvertes(qs) : qs;
 };
 
 // vues : questions déjà vues par l'élève sur ce sujet (les plus anciennes d'abord) → on propose d'abord les nouvelles.
 export function demoRevision(matiere, sujet, n = 10, pctQcm = 70, vues = [], opts = {}) {
   const b = banque(matiere, sujet);
-  return { demo: true, fiche: b.fiche, questions: enrichir(selection(preparer(b, pctQcm, n, opts), n, pctQcm, vues), estMaths(b)), sources: [{ titre: "Alloprof", url: "https://www.alloprof.qc.ca/" }] };
+  return { demo: true, fiche: b.fiche, questions: enrichir(selection(preparer(b, pctQcm, n, opts), n, pctQcm, vues, opts.durete), estMaths(b)), sources: [{ titre: "Alloprof", url: "https://www.alloprof.qc.ca/" }] };
 }
 
 // ---------- Mini-dictionnaire du mode démo ----------
@@ -324,5 +333,5 @@ export function demoDico(items) {
 
 export function demoFinal(matiere, sujet, n = 20, pctQcm = 70, vues = [], opts = {}) {
   const b = banque(matiere, sujet);
-  return { demo: true, questions: enrichir(selection(preparer(b, pctQcm, n, opts), n, pctQcm, vues), estMaths(b)), sources: [] };
+  return { demo: true, questions: enrichir(selection(preparer(b, pctQcm, n, opts), n, pctQcm, vues, opts.durete), estMaths(b)), sources: [] };
 }

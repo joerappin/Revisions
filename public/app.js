@@ -1837,10 +1837,13 @@ async function ongletTest(p, zone) {
     sync.surAction = null;
     sync.envoyer({ phase: "chargement", profil: { nom: p.nom, avatar: p.avatar } });
     try {
+      // Réglages à jour (l'admin a pu changer le minuteur, le nombre de questions ou la dureté depuis l'ouverture de la page).
+      const frais = await api("/profils/" + p.id);
+      for (const x of [p, etat.profil]) if (x?.id === p.id) Object.assign(x, { reglages: frais.reglages, minuteurAdmin: frais.minuteurAdmin, questionsAdmin: frais.questionsAdmin });
       if (geo) {
-        // Cartes et drapeaux : questions tirées des vraies données selon les choix de l'élève.
+        // Cartes et drapeaux : questions tirées des vraies données selon les choix de l'élève (nombre et dureté réglés côté serveur).
         const o = optionsGeo(p);
-        const data = await api(`/profils/${p.id}/geo-test`, { method: "POST", body: { ...o, n: quoi === "final" ? reg.nbFinal : reg.nbRevision } });
+        const data = await api(`/profils/${p.id}/geo-test`, { method: "POST", body: { ...o, quoi: quoi === "final" ? "final" : "revision" } });
         if (!document.body.contains(zone)) return;
         return demarrerQuiz({ type: quoi === "final" ? "final" : "revision", questions: data.questions, matiere: p.matiere, sujet: p.sujet, sources: [] });
       }

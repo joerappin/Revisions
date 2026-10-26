@@ -1205,8 +1205,10 @@ async function api(req, res, url) {
     // Test de géographie personnalisé (zones, cartes / drapeaux, QCM / écrit / positionner) : généré à partir des vraies données.
     if (parts[2] === "geo-test" && m === "POST") {
       const b = await readBody(req);
-      const n = Math.min(40, Math.max(3, Number(b.n) || 10));
-      return send(res, 200, { questions: genererTestGeo({ zones: Array.isArray(b.zones) ? b.zones.map(String) : undefined, contenu: String(b.contenu || "mix"), format: String(b.format || "mix"), n }), sources: [] });
+      // Nombre de questions et dureté : ceux réglés pour ce compte (révision ou examen).
+      const reg = reglagesDe(p), fin = b.quoi === "final";
+      const n = fin ? reg.nbFinal : b.quoi === "revision" ? reg.nbRevision : Math.min(60, Math.max(3, Number(b.n) || 10));
+      return send(res, 200, { questions: genererTestGeo({ zones: Array.isArray(b.zones) ? b.zones.map(String) : undefined, contenu: String(b.contenu || "mix"), format: String(b.format || "mix"), n, durete: fin ? reg.dureteFinal : reg.dureteRevision }), sources: [] });
     }
     if (parts[2] === "final" && m === "POST") {
       const b = await readBody(req);

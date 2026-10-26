@@ -189,12 +189,16 @@ function banqueOceans() {
 
 // ---------- Test personnalisé : zones, contenu (cartes / drapeaux / mix), format (QCM / écrit / positionner / mix) ----------
 export const ZONES_GEO = ["Europe", "Amériques", "Afrique"];
-export function genererTestGeo({ zones = ZONES_GEO, contenu = "mix", format = "mix", n = 10 } = {}) {
+// Dureté 1 à 5 (réglée par l'admin) : % de QCM (facile) / écrit (moyen) / positionner (difficile) quand le format est « mix ».
+const FORMATS_DURETE = { 1: [70, 25, 5], 2: [50, 35, 15], 3: [34, 33, 33], 4: [20, 40, 40], 5: [10, 35, 55] };
+export function genererTestGeo({ zones = ZONES_GEO, contenu = "mix", format = "mix", n = 10, durete = 3 } = {}) {
   zones = zones.filter((z) => ZONES_GEO.includes(z));
   if (!zones.length) zones = ZONES_GEO;
   const pool = melange(PAYS.filter((p) => zones.includes(p.zone)));
   const contenus = contenu === "cartes" ? ["carte"] : contenu === "drapeaux" ? ["drapeau"] : ["carte", "drapeau"];
   const formats = ["qcm", "ouverte", "positionner"].includes(format) ? [format] : ["qcm", "ouverte", "positionner"];
+  const poids = formats.length > 1 ? FORMATS_DURETE[durete] || FORMATS_DURETE[3] : [100];
+  const tirerFormat = () => { let t = Math.random() * 100; for (let k = 0; k < formats.length; k++) if ((t -= poids[k]) < 0) return formats[k]; return formats[formats.length - 1]; };
   const nom = (p) => p.nom;
   const sansArticle = (p) => de(p.nom).replace(/^(de la |de l'|du |des |de )/, "");
   const acceptes = (p) => [sansArticle(p), "la " + p.nom, "le " + p.nom, "les " + p.nom, "l'" + p.nom];
@@ -205,7 +209,7 @@ export function genererTestGeo({ zones = ZONES_GEO, contenu = "mix", format = "m
   for (let i = 0; i < n; i++) {
     const p = pool[i % pool.length];
     const c = contenus[i % contenus.length];
-    const f = formats[Math.floor(Math.random() * formats.length)];
+    const f = tirerFormat();
     const info = `${p.nom} (${continentDe(p)}) — capitale : ${p.capitale}.`;
     if (c === "drapeau") {
       if (f === "qcm") {
