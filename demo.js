@@ -270,9 +270,12 @@ const enOuvertes = (questions) => questions.map((x) => x.type !== "qcm" || x.rep
 // Banque + (en maths) des questions générées avec de nouveaux nombres à chaque fois.
 // Algèbre : les questions fixes sont filtrées selon le niveau (1 : faciles; 2 : faciles + moyennes; 3-4 : toutes).
 const DIFF_PERMISES = { 1: ["facile"], 2: ["facile", "moyen"] };
-const preparer = (b, pct, n = 10, { niveau } = {}) => {
+// Dureté réglée par l'admin : 1/5 retire les questions difficiles, 5/5 les faciles (s'il en reste assez).
+const DIFF_EXCLUE = { 1: "difficile", 5: "facile" };
+const selonDurete = (qs, n, durete) => { const g = qs.filter((x) => x.difficulte !== DIFF_EXCLUE[durete]); return g.length >= n ? g : qs; };
+const preparer = (b, pct, n = 10, { niveau, durete } = {}) => {
   const fixes = b === ALGEBRE && DIFF_PERMISES[niveau] ? b.questions.filter((x) => DIFF_PERMISES[niveau].includes(x.difficulte)) : b.questions;
-  const qs = estMaths(b) ? [...fixes, ...questionsGenerees(b === ALGEBRE ? "algebre" : "fractions", Math.max(10, n + 6), { niveau })] : b.questions;
+  const qs = selonDurete(estMaths(b) ? [...fixes, ...questionsGenerees(b === ALGEBRE ? "algebre" : "fractions", Math.max(10, n + 6), { niveau })] : b.questions, n, durete);
   return estMaths(b) && pct <= 0 ? enOuvertes(qs) : qs;
 };
 

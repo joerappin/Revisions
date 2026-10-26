@@ -32,7 +32,8 @@ const SUJETS = [
   [/physique/i, ["Les habiletés motrices", "La condition physique", "Les saines habitudes de vie"]],
 ];
 const sujetsPour = (m) => (SUJETS.find(([re]) => re.test(m || "")) || [null, []])[1];
-const REGLAGES_DEFAUT = { minuteur: true, secondesChoix: 45, secondesOuvertes: 120, secondesCalcul: 180, nbRevision: 10, nbFinal: 20, pctQcm: 70, pctQcmMaths: 0 };
+const REGLAGES_DEFAUT = { minuteur: true, secondesChoix: 45, secondesOuvertes: 120, secondesCalcul: 180, nbRevision: 10, nbFinal: 20, pctQcm: 70, pctQcmMaths: 0, dureteRevision: 3, dureteFinal: 3 };
+const NOMS_DURETE = { 1: "très facile", 2: "facile", 3: "normal", 4: "difficile", 5: "très difficile" };
 const reglagesDe = (p) => ({ ...REGLAGES_DEFAUT, ...(p?.reglages || {}) });
 
 // ================= Utilitaires =================
@@ -685,7 +686,7 @@ function graphique(sessions) {
 }
 const libType = (s) => s.type === "final" ? "Examen" : s.type === "lecon" ? "Leçon" : s.photo ? "Révision photo" : "Révision";
 function resumeReglages(r) {
-  return `${r.minuteur ? `⏱ ${r.secondesChoix} s (choix) / ${r.secondesOuvertes} s (ouvertes) / ${r.secondesCalcul} s (calcul en maths)` : "⏱ sans minuteur"} · ${r.nbRevision} questions en révision · ${r.nbFinal} à l'examen · ${r.pctQcm} % QCM / ${100 - r.pctQcm} % ouvertes · maths : ${100 - r.pctQcmMaths} % ouvertes avec calcul`;
+  return `${r.minuteur ? `⏱ ${r.secondesChoix} s (choix) / ${r.secondesOuvertes} s (ouvertes) / ${r.secondesCalcul} s (calcul en maths)` : "⏱ sans minuteur"} · ${r.nbRevision} questions en révision · ${r.nbFinal} à l'examen · ${r.pctQcm} % QCM / ${100 - r.pctQcm} % ouvertes · maths : ${100 - r.pctQcmMaths} % ouvertes avec calcul · 🎯 dureté révision ${r.dureteRevision}/5, examen ${r.dureteFinal}/5`;
 }
 
 // --- Sections du profil, réutilisées par l'écran web, les onglets mobiles et la vue admin ---
@@ -1097,10 +1098,31 @@ const champsMinuteur = (r) => `
     <div><label for="r-so">Secondes par question ouverte</label><input id="r-so" type="number" name="secondesOuvertes" min="15" max="900" value="${r.secondesOuvertes}"></div>
     <div><label for="r-scal">Secondes par calcul (maths)</label><input id="r-scal" type="number" name="secondesCalcul" min="30" max="1200" value="${r.secondesCalcul ?? 180}"></div>
   </div>`;
+// Nombre de questions (révision / examen).
+const champsNbQuestions = (r) => `
+  <div class="mission">
+    <div><label for="r-nr">Quiz de révision (5 à 60)</label><input id="r-nr" type="number" name="nbRevision" min="5" max="60" value="${r.nbRevision}"></div>
+    <div><label for="r-nf">Examen (10 à 60)</label><input id="r-nf" type="number" name="nbFinal" min="10" max="60" value="${r.nbFinal}"></div>
+  </div>`;
+// Dureté 1 à 5 (admin seulement), une molette graduée pour les révisions et une pour l'examen :
+// difficulté des questions et sévérité de la correction.
+const molette = (r, nom, titre) => `
+  <div class="molette">
+    <label for="r-${nom}">${titre} : <strong class="molette-lib" data-pour="${nom}"></strong></label>
+    <input id="r-${nom}" type="range" name="${nom}" min="1" max="5" step="1" value="${r[nom]}">
+    <div class="molette-graduation">${[1, 2, 3, 4, 5].map((v) => `<span>${v}</span>`).join("")}</div>
+  </div>`;
+const champsDurete = (r) => `
+  <div class="mission">
+    <div>${molette(r, "dureteRevision", "📖 Révisions")}</div>
+    <div>${molette(r, "dureteFinal", "⚔️ Examen")}</div>
+  </div>
+  <p class="aide">1 = questions surtout faciles, correction indulgente · 3 = normal · 5 = questions surtout difficiles, correction très stricte (orthographe exacte, pas de demi-point en maths).</p>`;
+const majDurete = (f) => f.querySelectorAll(".molette-lib").forEach((el) => { const v = f[el.dataset.pour].value; el.textContent = `${v}/5 · ${NOMS_DURETE[v]}`; });
 async function ecranReglages(id) {
   const p = (etat.profil = await api("/profils/" + id));
   const r = reglagesDe(p);
-  const admin = !!etat.moi.admin, verrou = !!p.minuteurAdmin && !admin;
+  const admin = !!etat.moi.admin, verrou = !!p.minuteurAdmin && !admin, verrouQ = !!p.questionsAdmin && !admin;
   app.innerHTML = `
     <div class="panel">
       <span class="etiquette">RÉGLAGES DE ${esc(p.nom.toUpperCase())}</span>
@@ -1114,10 +1136,14 @@ async function ecranReglages(id) {
         <p class="aide">Quand il reste 10 secondes, le contour du téléphone clignote en rouge.</p>
 
         <h3 style="margin-top:20px">❓ Nombre de questions</h3>
-        <div class="mission">
-          <div><label for="r-nr">Quiz de révision</label><input id="r-nr" type="number" name="nbRevision" min="5" max="25" value="${r.nbRevision}"></div>
-          <div><label for="r-nf">Examen</label><input id="r-nf" type="number" name="nbFinal" min="10" max="40" value="${r.nbFinal}"></div>
-        </div>
+        <fieldset class="sans-cadre" ${verrouQ ? "disabled" : ""}>
+          ${champsNbQuestions(r)}
+        </fieldset>
+        ${verrouQ ? `<p class="bloc-indice">🔒 Le nombre de questions est réglé par l'admin : demande-lui pour le changer.</p>` : ""}
+        ${admin ? `<label class="case"><input type="checkbox" name="questionsAdmin" ${p.questionsAdmin ? "checked" : ""}> 🔒 Verrouiller le nombre de questions (l'élève ne peut plus le modifier)</label>` : ""}
+
+        <h3 style="margin-top:20px">🎯 Dureté</h3>
+        ${admin ? champsDurete(r) : `<p class="aide">Révisions ${r.dureteRevision}/5 (${NOMS_DURETE[r.dureteRevision]}) · examen ${r.dureteFinal}/5 (${NOMS_DURETE[r.dureteFinal]}) — réglée par l'admin.</p>`}
 
         <h3 style="margin-top:20px">⚖️ Types de questions</h3>
         <label for="r-pct">Répartition : <span id="pct-lib"></span></label>
@@ -1146,18 +1172,22 @@ async function ecranReglages(id) {
     $("#pctm-barre").style.width = vm + "%";
     $("#zone-temps").style.opacity = f.minuteur.checked ? 1 : 0.4;
     f.secondesChoix.disabled = f.secondesOuvertes.disabled = f.secondesCalcul.disabled = !f.minuteur.checked;
+    if (admin) majDurete(f);
   };
   f.addEventListener("input", maj);
   maj();
   $("#defaut").addEventListener("click", () => {
-    for (const [k, v] of Object.entries(REGLAGES_DEFAUT)) { if (verrou && ["minuteur", "secondesChoix", "secondesOuvertes", "secondesCalcul"].includes(k)) continue; if (k === "minuteur") f.minuteur.checked = v; else f[k].value = v; }
+    for (const [k, v] of Object.entries(REGLAGES_DEFAUT)) {
+      if (!f[k] || (verrou && ["minuteur", "secondesChoix", "secondesOuvertes", "secondesCalcul"].includes(k)) || (verrouQ && ["nbRevision", "nbFinal"].includes(k))) continue;
+      if (k === "minuteur") f.minuteur.checked = v; else f[k].value = v;
+    }
     maj();
   });
   f.addEventListener("submit", async (e) => {
     e.preventDefault();
     const body = { minuteur: f.minuteur.checked };
     for (const k of ["secondesChoix", "secondesOuvertes", "secondesCalcul", "nbRevision", "nbFinal", "pctQcm", "pctQcmMaths"]) body[k] = Number(f[k].value);
-    if (admin) body.minuteurAdmin = f.minuteurAdmin.checked;
+    if (admin) Object.assign(body, { minuteurAdmin: f.minuteurAdmin.checked, questionsAdmin: f.questionsAdmin.checked, dureteRevision: Number(f.dureteRevision.value), dureteFinal: Number(f.dureteFinal.value) });
     try {
       etat.profil = await api(`/profils/${p.id}/reglages`, { method: "PUT", body });
       toast("Réglages enregistrés !");
@@ -1187,8 +1217,9 @@ function distance(a, b) {
   return d[a.length][b.length];
 }
 // Vérifie une réponse. souple = accepter les fautes d'orthographe (partout sauf en français).
+// durete (1 à 5, réglée par l'admin) : 1 tolère une faute de plus, 4 une de moins, 5 aucune (voir corrigerTout).
 // Renvoie { ok, orthographe } : orthographe = la bonne écriture quand la réponse est acceptée malgré une faute.
-function correspondance(q, rep, souple = false) {
+function correspondance(q, rep, souple = false, durete = 3) {
   if (rep == null || String(rep).trim() === "") return { ok: false };
   if (estChoix(q) || q.type === "ordre" || q.type === "carte") return { ok: rep === q.reponse };
   const a = normaliserNombre(rep), b = normaliserNombre(q.reponse);
@@ -1201,7 +1232,8 @@ function correspondance(q, rep, souple = false) {
   const r = formeSouple(rep);
   for (const att of attendues) {
     const f = formeSouple(att);
-    const tolerance = f.length >= 9 ? 2 : f.length >= 5 ? 1 : 0; // mots courts : pas de faute de frappe (Mali ≠ Bali)
+    const base = f.length >= 9 ? 2 : f.length >= 5 ? 1 : 0; // mots courts : pas de faute de frappe (Mali ≠ Bali)
+    const tolerance = Math.max(0, base + (durete <= 1 && base ? 1 : 0) - (durete >= 4 ? 1 : 0));
     if (f === r || (tolerance && distance(f, r) <= tolerance)) return { ok: true, orthographe: att === q.reponse || !q.reponse ? att : q.reponse };
   }
   return { ok: false };
@@ -1252,11 +1284,12 @@ const avecCalcul = (z, q) => estMathsM(z.matiere) && (q.type === "numerique" || 
 // Corrige une liste de réponses. Sensei reçoit en un seul appel : les réponses écrites douteuses
 // et, en maths, toutes les réponses accompagnées d'un calcul (le calcul compte dans la note).
 async function corrigerTout(z, indices) {
-  const aDemander = [];
+  const reg = reglagesDe(etat.profil), aDemander = [], durete = z.type === "final" ? reg.dureteFinal : reg.dureteRevision;
   for (const i of indices) {
     if (z.triches?.[i]) continue; // changement d'onglet : déjà comptée fausse
     const q = z.questions[i], rep = z.reponses[i], calcul = z.calculs?.[i] || "";
-    const { ok, orthographe = "" } = correspondance(q, rep, !/fran/i.test(z.matiere || "")); // en français, l'orthographe exacte compte
+    // En français (et à la dureté 5/5), l'orthographe exacte compte.
+    const { ok, orthographe = "" } = correspondance(q, rep, !/fran/i.test(z.matiere || "") && durete < 5, durete);
     z.resultats[i] = { ok, points: ok ? 1 : 0, commentaire: "", orthographe };
     if (!etat.status.ia || rep == null || !String(rep).trim()) continue;
     if ((avecCalcul(z, q) && calcul.trim()) || (!ok && q.type === "ouverte")) aDemander.push(i);
@@ -1265,7 +1298,7 @@ async function corrigerTout(z, indices) {
     try {
       const r = await api(`/profils/${etat.profil.id}/corriger`, {
         method: "POST",
-        body: { matiere: z.matiere, items: aDemander.map((i) => ({ enonce: z.questions[i].enonce, reponse: z.questions[i].reponse, reponses_acceptees: z.questions[i].reponses_acceptees, reponse_eleve: z.reponses[i], calcul: z.calculs?.[i] || "" })) },
+        body: { matiere: z.matiere, type: z.type, items: aDemander.map((i) => ({ enonce: z.questions[i].enonce, reponse: z.questions[i].reponse, reponses_acceptees: z.questions[i].reponses_acceptees, reponse_eleve: z.reponses[i], calcul: z.calculs?.[i] || "" })) },
       });
       aDemander.forEach((i, k) => {
         const x = r.resultats[k];
@@ -2466,6 +2499,16 @@ async function ecranAdmin() {
         <p class="aide">Pour un seul élève : ouvre son compte dans la liste, puis « Régler le minuteur ».</p>
       </form>
     </details>
+    <details class="panel" id="admin-questions"><summary><strong>🎯 Dureté et nombre de questions pour tous les comptes</strong></summary>
+      <form id="form-questions-tous" style="margin-top:12px">
+        ${champsDurete(REGLAGES_DEFAUT)}
+        <h3 style="margin-top:16px">❓ Nombre de questions</h3>
+        ${champsNbQuestions(REGLAGES_DEFAUT)}
+        <label class="case"><input type="checkbox" name="verrou" checked> 🔒 Verrouiller le nombre de questions (les élèves ne peuvent plus le modifier)</label>
+        <div class="actions"><button class="btn rouge">Appliquer à tous les comptes (${comptes.length})</button></div>
+        <p class="aide">Pour un seul élève : ouvre son compte dans la liste, puis « Régler le minuteur et les questions ».</p>
+      </form>
+    </details>
     <div class="panel">
       <span class="etiquette">TOUS LES COMPTES</span>
       <input id="admin-filtre" placeholder="🔎 Chercher un nom, une école, une matière…" style="margin-bottom:14px">
@@ -2499,6 +2542,16 @@ async function ecranAdmin() {
       toast(`Minuteur appliqué à ${r.comptes} compte${r.comptes > 1 ? "s" : ""}.`);
     } catch (err) { toast(err.message, true); }
   });
+  const fq = $("#form-questions-tous");
+  fq.addEventListener("input", () => majDurete(fq)); majDurete(fq);
+  fq.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!confirm(`Appliquer la dureté (révisions ${fq.dureteRevision.value}/5, examen ${fq.dureteFinal.value}/5) et ce nombre de questions aux ${comptes.length} comptes ?`)) return;
+    try {
+      const r = await api("/admin/questions", { method: "POST", body: { dureteRevision: Number(fq.dureteRevision.value), dureteFinal: Number(fq.dureteFinal.value), nbRevision: Number(fq.nbRevision.value), nbFinal: Number(fq.nbFinal.value), verrou: fq.verrou.checked } });
+      toast(`Dureté et nombre de questions appliqués à ${r.comptes} compte${r.comptes > 1 ? "s" : ""}.`);
+    } catch (err) { toast(err.message, true); }
+  });
   $("#admin-out").addEventListener("click", async () => { await api("/admin/deconnexion", { method: "POST" }); etat.moi.admin = false; location.hash = "#/"; });
   $("#admin-restaurer").addEventListener("change", async (e) => {
     const f = e.target.files[0]; e.target.value = "";
@@ -2524,6 +2577,8 @@ async function ecranAdminCompte(id) {
     <p class="aide">Compte créé le ${fmtDate(p.cree)}${p.derniereConnexion ? ` · dernière connexion le ${fmtDate(p.derniereConnexion)}` : ""} · mission actuelle : ${esc(p.matiere || "—")}${p.sujet ? " / " + esc(p.sujet) : ""}</p>
     <div class="panel"><span class="etiquette">⏱ MINUTEUR DES QUESTIONS</span>
       <p>${esc(resumeReglages(reglagesDe(p)).split(" · ")[0])}${p.minuteurAdmin ? " · 🔒 verrouillé par l'admin" : " · l'élève peut le modifier"}</p>
+      <p>❓ ${reglagesDe(p).nbRevision} questions en révision · ${reglagesDe(p).nbFinal} à l'examen${p.questionsAdmin ? " · 🔒 verrouillé par l'admin" : " · l'élève peut le modifier"}</p>
+      <p>🎯 Dureté : révisions ${reglagesDe(p).dureteRevision}/5 (${NOMS_DURETE[reglagesDe(p).dureteRevision]}) · examen ${reglagesDe(p).dureteFinal}/5 (${NOMS_DURETE[reglagesDe(p).dureteFinal]})</p>
       <div class="actions" style="margin:0"><a class="btn petit" href="#/profil/${p.id}/reglages">⏱ Régler le minuteur et les questions</a></div>
     </div>
     ${vueProgres(p)}

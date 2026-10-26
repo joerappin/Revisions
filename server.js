@@ -165,9 +165,22 @@ const URL_PUBLIQUE = (process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL 
 const newId = () => crypto.randomBytes(6).toString("hex");
 
 // Réglages du test, propres à chaque profil.
-const REGLAGES_DEFAUT = { minuteur: true, secondesChoix: 45, secondesOuvertes: 120, secondesCalcul: 180, nbRevision: 10, nbFinal: 20, pctQcm: 70, pctQcmMaths: 0 };
+const REGLAGES_DEFAUT = { minuteur: true, secondesChoix: 45, secondesOuvertes: 120, secondesCalcul: 180, nbRevision: 10, nbFinal: 20, pctQcm: 70, pctQcmMaths: 0, dureteRevision: 3, dureteFinal: 3 };
 const CLES_MINUTEUR = ["minuteur", "secondesChoix", "secondesOuvertes", "secondesCalcul"]; // réglables par l'admin (et verrouillables)
-const BORNES = { secondesChoix: [10, 300], secondesOuvertes: [15, 900], secondesCalcul: [30, 1200], nbRevision: [5, 25], nbFinal: [10, 40], pctQcm: [0, 100], pctQcmMaths: [0, 100] };
+const CLES_QUESTIONS = ["nbRevision", "nbFinal"]; // idem, verrou séparé
+const CLES_DURETE = ["dureteRevision", "dureteFinal"]; // admin seulement
+const BORNES = { secondesChoix: [10, 300], secondesOuvertes: [15, 900], secondesCalcul: [30, 1200], nbRevision: [5, 60], nbFinal: [10, 60], pctQcm: [0, 100], pctQcmMaths: [0, 100], dureteRevision: [1, 5], dureteFinal: [1, 5] };
+// Dureté (1 à 5, réglée par l'admin seulement, une pour les révisions et une pour l'examen) :
+// difficulté des questions ET sévérité de la correction. 3 = normal.
+const NOMS_DURETE = { 1: "très facile", 2: "facile", 3: "normal", 4: "difficile", 5: "très difficile" };
+const MELANGE_DURETE = { 1: [60, 35, 5], 2: [45, 40, 15], 3: [30, 45, 25], 4: [15, 45, 40], 5: [5, 35, 60] }; // % faciles / moyennes / difficiles
+const SEVERITE_DURETE = {
+  1: "Correction très indulgente : accepte une réponse juste sur l'essentiel même incomplète ou maladroite; en maths, points = 1 si le résultat final est juste même sans calcul, 0.5 si la démarche est bonne malgré une erreur de calcul.",
+  2: "Correction indulgente : en cas de doute sur une réponse presque juste, accepte-la.",
+  3: "",
+  4: "Correction exigeante : la réponse doit être complète et précise, pas seulement l'idée générale; accepte les petites fautes de frappe mais pas les vraies fautes d'orthographe; en maths, 0.5 seulement si le résultat est juste avec un calcul incomplet, 0 si une erreur de calcul fausse le résultat.",
+  5: "Correction très stricte : la réponse doit être complète, précise et bien orthographiée (orthographe exacte partout, accents compris); en maths, points = 1 seulement si le calcul est complet et juste ET le résultat juste, sinon 0 (jamais de 0.5).",
+};
 function reglagesDe(p) {
   return { ...REGLAGES_DEFAUT, ...(p.reglages || {}) };
 }
@@ -438,9 +451,12 @@ function nettoyerSvg(svg) {
 const CONSIGNES_SVG = `Pour visuel_svg : un schéma SVG simple et lisible (style manga : traits noirs épais, aplats #ffd60a jaune, #e63946 rouge, #2b6cff bleu, fond blanc) qui aide vraiment à comprendre la notion (diagramme, ligne du temps, tableau, figure géométrique, barres de fractions, carte simplifiée, flèches d'accord…).
 Règles : commence par <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 220">, pas de script, pas d'image externe, police font-family="Arial", textes en français (ou dans la langue étudiée), taille ≥ 13, rien qui dépasse du cadre. Mets "" si un visuel n'aide pas.`;
 
-function consignesQuestions(n, r, matiere) {
-  const lang = estLangue(matiere);
+// Jusqu'à 60 questions : au-delà de 30, la réponse peut dépasser 64 000 tokens (Opus 5.5 en streaming va jusqu'à 128 000).
+const tokensPour = (n) => (n > 30 ? 128000 : 64000);
+function consignesQuestions(n, r, matiere, durete = 3) {
+  const lang = estLangue(matiere), [fa, mo, di] = MELANGE_DURETE[durete] || MELANGE_DURETE[3];
   return `${n} questions au total : exactement ${r.choix} à choix (qcm ou vrai_faux) et ${r.ouvertes} ouvertes (type "numerique" pour une réponse qui est un nombre, sinon type "ouverte" avec une réponse courte : un mot, une expression ou une phrase courte, corrigeable sans ambiguïté; liste les variantes acceptées dans reponses_acceptees).
+Dureté choisie par l'admin : ${durete}/5 (${NOMS_DURETE[durete]}). Environ ${fa} % de questions faciles, ${mo} % moyennes et ${di} % difficiles (champ difficulte), en restant dans le programme de l'élève.
 Indice : pour CHAQUE question, un indice court et léger qui met sur la piste sans donner la réponse. En maths, rappelle la notion et donne un exemple semblable résolu avec d'autres nombres; en français, rappelle la règle à appliquer.
 Corrections : l'explication enseigne la règle; si la matière est les maths ou les sciences, "demarche" détaille chaque étape du calcul (une par ligne, avec les nombres réels de la question et une vérification); pour chaque mauvais choix, "explications_choix" dit exactement quelle erreur mène à ce choix (ex. « tu as additionné les dénominateurs »).
 ${estHistoire(matiere) ? `Histoire : inclus au moins 2 frises chronologiques (type "ordre", 4 à 6 événements avec leur date) et des questions avec image (image_svg) : tenues vestimentaires d'époque à identifier, objets, monuments, cartes. Les questions "ordre" comptent dans les questions à choix.` : ""}
@@ -493,7 +509,7 @@ fs.mkdirSync(LECONS_PHOTO, { recursive: true });
 async function genererLeconPhoto(p, matiere, sujet, fichiers) {
   const reg = reglagesDe(p);
   if (!getClient()) {
-    const d = demoRevision(matiere, sujet, reg.nbRevision, pctPour(reg, matiere));
+    const d = demoRevision(matiere, sujet, reg.nbRevision, pctPour(reg, matiere), [], { durete: reg.dureteRevision });
     d.fiche = { ...d.fiche, titre: "Ta leçon en photo (démo)", intro: "Mode démo : Sensei ne peut pas lire la photo sans clé API. Voici un exemple de leçon et de révision. Avec une clé API, la leçon et la révision sont créées à partir de ce qui est écrit sur ta photo." };
     return d;
   }
@@ -502,7 +518,7 @@ async function genererLeconPhoto(p, matiere, sujet, fichiers) {
   const r = await ask({
     system: SYSTEM,
     schema: SCHEMA_REVISION,
-    maxTokens: 64000,
+    maxTokens: tokensPour(n),
     content: [...images, {
       type: "text",
       text: `${contexteProfil(p, matiere, sujet)}
@@ -510,7 +526,7 @@ async function genererLeconPhoto(p, matiere, sujet, fichiers) {
 L'élève a photographié sa leçon (${matiere}${sujet ? `, « ${sujet} »` : ""}, ${p.annee}). Lis attentivement TOUT le contenu des photos (texte, schémas, exemples, exercices).
 1. Fais-en une leçon explicative et visuelle, fidèle à la photo : reprends les définitions, règles, méthodes et le vocabulaire de l'enseignant, en les expliquant plus simplement. Titre accrocheur style manga (tiré du contenu), intro courte, 4 à 6 notions (explication + exemple résolu + visuel + ${estLangue(matiere) ? "exemples audio" : "audio = []"}), 3 astuces, 2 à 4 pièges.
 ${CONSIGNES_SVG}
-2. Un test qui vérifie que l'élève a compris CE contenu précis (pas d'autres notions). ${consignesQuestions(n, rep, matiere)}
+2. Un test qui vérifie que l'élève a compris CE contenu précis (pas d'autres notions). ${consignesQuestions(n, rep, matiere, reg.dureteRevision)}
 Si une partie de la photo est illisible, n'invente rien : base-toi seulement sur ce qui est lisible.`,
     }],
   });
@@ -524,7 +540,7 @@ const leconIntegree = (matiere, sujet) => estCCQ(matiere) && !!banqueCCQ(sujet);
 // ---------- Routes IA ----------
 async function genererRevision(p, matiere, sujet) {
   const reg = reglagesDe(p);
-  if (!getClient() || leconIntegree(matiere, sujet)) return demoRevision(matiere, sujet, reg.nbRevision, pctPour(reg, matiere));
+  if (!getClient() || leconIntegree(matiere, sujet)) return demoRevision(matiere, sujet, reg.nbRevision, pctPour(reg, matiere), [], { durete: reg.dureteRevision });
   const rech = await recherche(p.annee, matiere, sujet);
   const n = reg.nbRevision, rep = repartition(n, pctPour(reg, matiere));
   const content = [
@@ -540,14 +556,14 @@ Crée une séance de révision sur « ${sujet} » (${matiere}, ${p.annee}) :
 1. Une fiche de révision : titre accrocheur style manga, intro courte (2-3 phrases), 4 à 6 notions (explication claire + exemple concret résolu + visuel + ${estLangue(matiere) ? "exemples audio" : 'audio = []'}), 3 astuces de mémorisation, 2 à 4 pièges fréquents.
 ${CONSIGNES_SVG}
 ${estLangue(matiere) ? "Pour audio des notions : 2 à 4 phrases d'exemple naturelles dans la langue étudiée, qui illustrent la notion, que l'élève pourra écouter." : ""}
-2. Des questions de révision progressives (facile → difficile) qui couvrent toutes les notions, en insistant sur les notions faibles de l'élève. ${consignesQuestions(n, rep, matiere)}
+2. Des questions de révision progressives (facile → difficile) qui couvrent toutes les notions, en insistant sur les notions faibles de l'élève. ${consignesQuestions(n, rep, matiere, reg.dureteRevision)}
 Chaque explication doit enseigner, pas seulement corriger.
 Si des photos sont jointes, inspire-toi de leurs exercices et de leur vocabulaire.`,
     },
   ];
-  const r = await ask({ system: SYSTEM, content, schema: SCHEMA_REVISION, maxTokens: 64000 });
+  const r = await ask({ system: SYSTEM, content, schema: SCHEMA_REVISION, maxTokens: tokensPour(n) });
   for (const no of r.json.fiche.notions) { no.visuel_svg = nettoyerSvg(no.visuel_svg); no.visuel_url = nettoyerUrlImage(no.visuel_url); }
-  return { ...r.json, questions: nettoyerQuestions(r.json.questions), sources: rech.sources };
+  return { ...r.json, questions: nettoyerQuestions(r.json.questions), sources: rech.sources, durete: reg.dureteRevision };
 }
 
 // Algèbre : niveau visé (année scolaire, moment de l'année, réussites récentes sur ce sujet). null hors algèbre.
@@ -575,11 +591,11 @@ const enonces = (p, matiere, sujet) => vuesDe(p, matiere, sujet).slice(-40).map(
 // Nouvelles questions de révision par l'IA (questions seulement, la fiche reste celle de la leçon).
 async function genererQuestionsRevision(p, matiere, sujet, fiche) {
   const reg = reglagesDe(p), n = reg.nbRevision, rep = repartition(n, pctPour(reg, matiere));
-  const r = await ask({ system: SYSTEM, schema: SCHEMA_FINAL, maxTokens: 64000, content: [...imagesProfil(p, matiere, sujet), { type: "text", text: `${contexteProfil(p, matiere, sujet)}
+  const r = await ask({ system: SYSTEM, schema: SCHEMA_FINAL, maxTokens: tokensPour(n), content: [...imagesProfil(p, matiere, sujet), { type: "text", text: `${contexteProfil(p, matiere, sujet)}
 
 Crée une NOUVELLE séance de révision sur « ${sujet} » (${matiere}, ${p.annee}), différente des précédentes : de nouveaux énoncés, de nouveaux exemples, de nouveaux nombres.
 ${fiche ? `Notions de la leçon :\n${fiche.notions.map((no) => `- ${no.titre} : ${no.explication}`).join("\n").slice(0, 6000)}` : ""}
-${consignesQuestions(n, rep, matiere)}
+${consignesQuestions(n, rep, matiere, reg.dureteRevision)}
 Chaque explication doit enseigner, pas seulement corriger. Insiste sur les notions faibles de l'élève.
 Ne réutilise pas ces questions déjà vues :
 ${enonces(p, matiere, sujet).map((e) => "- " + e).join("\n")}` }] });
@@ -599,12 +615,13 @@ async function revisionFraiche(p, matiere, sujet) {
   const reg = reglagesDe(p), vues = vuesDe(p, matiere, sujet);
   let lecon, questions;
   if (!getClient() || leconIntegree(matiere, sujet)) {
-    lecon = demoRevision(matiere, sujet, reg.nbRevision, pctPour(reg, matiere), vues, { niveau: niveauDe(p, matiere, sujet)?.niveau });
+    lecon = demoRevision(matiere, sujet, reg.nbRevision, pctPour(reg, matiere), vues, { niveau: niveauDe(p, matiere, sujet)?.niveau, durete: reg.dureteRevision });
     questions = lecon.questions;
   } else {
     lecon = await obtenirLecon(p, matiere, sujet);
     const neuves = lecon.questions.filter((x) => !vues.includes(cleQuestion(x)));
-    if (neuves.length >= Math.ceil(lecon.questions.length * 0.7)) questions = neuves;
+    // Questions de la leçon gardées seulement si la dureté n'a pas changé depuis.
+    if ((lecon.durete ?? 3) === reg.dureteRevision && neuves.length >= Math.ceil(lecon.questions.length * 0.7)) questions = neuves;
     else {
       const cle = cleLecon(p, matiere, sujet);
       const pr = revisionsPretes.get(cle) || genererQuestionsRevision(p, matiere, sujet, lecon.fiche);
@@ -621,7 +638,7 @@ async function revisionFraiche(p, matiere, sujet) {
 async function genererFinal(p, matiere, sujet, dejaVuesClient = []) {
   const reg = reglagesDe(p);
   const dejaVues = [...new Set([...(dejaVuesClient || []), ...enonces(p, matiere, sujet)])];
-  if (!getClient() || leconIntegree(matiere, sujet)) return demoFinal(matiere, sujet, reg.nbFinal, pctPour(reg, matiere), vuesDe(p, matiere, sujet), { niveau: niveauDe(p, matiere, sujet)?.niveau });
+  if (!getClient() || leconIntegree(matiere, sujet)) return demoFinal(matiere, sujet, reg.nbFinal, pctPour(reg, matiere), vuesDe(p, matiere, sujet), { niveau: niveauDe(p, matiere, sujet)?.niveau, durete: reg.dureteFinal });
   const n = reg.nbFinal, rep = repartition(n, pctPour(reg, matiere));
   const rech = await recherche(p.annee, matiere, sujet);
   const content = [
@@ -634,20 +651,21 @@ Notes de recherche sur le sujet :
 ${rech.notes}
 
 Crée le TEST FINAL sur « ${sujet} » (${matiere}, ${p.annee}), comme une simulation d'examen noté sur 100 %.
-Environ 30 % faciles, 45 % moyennes, 25 % difficiles, couvrant toutes les notions du sujet au niveau attendu par la Progression des apprentissages; si une épreuve ministérielle existe pour ce niveau, imite son style.
-${consignesQuestions(n, rep, matiere)}
+Couvre toutes les notions du sujet au niveau attendu par la Progression des apprentissages; si une épreuve ministérielle existe pour ce niveau, imite son style.
+${consignesQuestions(n, rep, matiere, reg.dureteFinal)}
 Insiste sur les notions faibles de l'élève.
 ${dejaVues?.length ? `Ne réutilise pas ces questions déjà vues :\n${dejaVues.slice(-40).map((e) => "- " + e).join("\n")}` : ""}
 Chaque examen doit être différent des précédents : nouveaux énoncés, nouveaux exemples, nouveaux nombres.`,
     },
   ];
-  const r = await ask({ system: SYSTEM, content, schema: SCHEMA_FINAL, maxTokens: 64000 });
+  const r = await ask({ system: SYSTEM, content, schema: SCHEMA_FINAL, maxTokens: tokensPour(n) });
   return { questions: nettoyerQuestions(r.json.questions), sources: rech.sources };
 }
 
 // Correction des réponses ouvertes qui ne correspondent pas mot pour mot au corrigé.
-async function corriger(p, matiere, items) {
+async function corriger(p, matiere, items, type = "revision") {
   if (!getClient() || !items.length) return items.map(() => ({ correct: false, points: 0, commentaire: "" }));
+  const reg = reglagesDe(p), durete = type === "final" ? reg.dureteFinal : reg.dureteRevision;
   const r = await ask({
     system: SYSTEM,
     effort: "low",
@@ -658,13 +676,13 @@ Accepte les synonymes, les formulations équivalentes, les fautes d'orthographe 
 Quand tu acceptes une réponse malgré une faute d'orthographe, commence le commentaire par « Attention à l'orthographe : on écrit … » avec la bonne orthographe.
 Quand l'élève a écrit son calcul, il compte dans la note : points = 1 si le résultat final est juste ET le calcul est valable; 0.5 si le résultat est juste mais le calcul est absent, faux ou incohérent, OU si la démarche est bonne mais qu'une petite erreur de calcul fausse le résultat; 0 sinon. Sans calcul demandé : 1 ou 0.
 Donne un commentaire encourageant (1 à 3 phrases) : si c'est faux ou à moitié juste, explique précisément l'erreur (en maths : à quelle ligne de son calcul il se trompe et ce qu'il aurait fallu faire). Réponds dans le même ordre.
-
+${SEVERITE_DURETE[durete] ? `Sévérité choisie par l'admin (${durete}/5) — elle l'emporte sur les consignes ci-dessus : ${SEVERITE_DURETE[durete]}\n` : ""}
 ${items.map((it, i) => `Item ${i + 1}
 Question : ${it.enonce}
 Réponse attendue : ${it.reponse}${it.reponses_acceptees?.length ? ` (aussi acceptées : ${it.reponses_acceptees.join(" | ")})` : ""}
 Réponse de l'élève : ${it.reponse_eleve}${it.calcul ? `\nCalcul de l'élève :\n${it.calcul}` : ""}`).join("\n\n")}`,
   });
-  const res = r.json.resultats || [];
+  const res = (r.json.resultats || []).map((x) => (durete >= 5 && x.points === 0.5 ? { ...x, correct: false, points: 0 } : x)); // 5/5 : pas de demi-point
   return items.map((_, i) => res[i] || { correct: false, points: 0, commentaire: "" });
 }
 
@@ -1010,6 +1028,19 @@ async function apiAdmin(req, res, parts) {
     saveDb();
     return send(res, 200, { comptes: cibles.length });
   }
+  // Dureté et nombre de questions pour tous les comptes (ou ceux de ids) : { dureteRevision, dureteFinal, nbRevision, nbFinal, verrou }
+  if (parts[1] === "questions" && m === "POST") {
+    const b = await readBody(req);
+    const cibles = Array.isArray(b.ids) ? db.profils.filter((x) => b.ids.includes(x.id)) : db.profils;
+    const choisis = nettoyerReglages({ ...REGLAGES_DEFAUT, ...b });
+    for (const x of cibles) {
+      x.reglages = { ...reglagesDe(x), ...Object.fromEntries([...CLES_DURETE, ...CLES_QUESTIONS].map((k) => [k, choisis[k]])) };
+      x.questionsAdmin = !!b.verrou;
+    }
+    revisionsPretes.clear(); finalsPrets.clear(); // préparées avec les anciens réglages
+    saveDb();
+    return send(res, 200, { comptes: cibles.length });
+  }
   if (parts[1] === "comptes" && parts.length === 2 && m === "GET") {
     return send(res, 200, db.profils.map(resumeCompte).sort((a, b) => String(b.derniereActivite).localeCompare(String(a.derniereActivite))));
   }
@@ -1099,11 +1130,15 @@ async function api(req, res, url) {
       return send(res, 200, profilPublic(p));
     }
     if (parts[2] === "reglages" && m === "PUT") {
-      const b = await readBody(req), nouv = nettoyerReglages(b);
-      // Minuteur verrouillé par l'admin : l'élève ne peut pas le changer.
-      if (p.minuteurAdmin && !sess?.admin) { const r = reglagesDe(p); for (const k of CLES_MINUTEUR) nouv[k] = r[k]; }
+      const b = await readBody(req), nouv = nettoyerReglages(b), r = reglagesDe(p);
+      // Dureté : admin seulement. Minuteur ou nombre de questions verrouillés par l'admin : l'élève ne peut pas les changer.
+      if (!sess?.admin) for (const k of CLES_DURETE) nouv[k] = r[k];
+      if (p.minuteurAdmin && !sess?.admin) for (const k of CLES_MINUTEUR) nouv[k] = r[k];
+      if (p.questionsAdmin && !sess?.admin) for (const k of CLES_QUESTIONS) nouv[k] = r[k];
       if (sess?.admin && "minuteurAdmin" in b) p.minuteurAdmin = !!b.minuteurAdmin;
+      if (sess?.admin && "questionsAdmin" in b) p.questionsAdmin = !!b.questionsAdmin;
       p.reglages = nouv; saveDb();
+      if ([...CLES_DURETE, ...CLES_QUESTIONS].some((k) => nouv[k] !== r[k])) { revisionsPretes.clear(); finalsPrets.clear(); } // préparées avec les anciens réglages
       return send(res, 200, profilPublic(p));
     }
     if (parts[2] === "corriger" && m === "POST") {
@@ -1114,7 +1149,7 @@ async function api(req, res, url) {
         reponse_eleve: String(it.reponse_eleve || "").slice(0, 1000),
         calcul: String(it.calcul || "").slice(0, 3000),
       }));
-      return send(res, 200, { resultats: await corriger(p, String(b.matiere || p.matiere || ""), items) });
+      return send(res, 200, { resultats: await corriger(p, String(b.matiere || p.matiere || ""), items, b.type === "final" ? "final" : "revision") });
     }
     if (parts.length === 2 && m === "DELETE") {
       for (const ph of p.photos) fs.rmSync(path.join(PHOTOS, ph.fichier), { force: true });
