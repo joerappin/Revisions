@@ -231,10 +231,17 @@ function selection(questionsBrutes, n, pctQcm, vues = []) {
   const vuesBases = new Set();
   const questions = parFraicheur(avecVariantes(questionsBrutes), vues).filter((x) => (vuesBases.has(x._base) ? false : vuesBases.add(x._base)))
     .map(({ _base, ...x }) => x);
-  const choix = questions.filter(estChoix), ouvertes = questions.filter((x) => !estChoix(x));
-  if (pctQcm <= 0) return melange(ouvertes.slice(0, n));
-  if (pctQcm >= 100) return melange(choix.slice(0, n));
-  let nc = Math.round((Math.min(n, questions.length) * pctQcm) / 100), no = Math.min(n, questions.length) - nc;
+  let choix = questions.filter(estChoix), ouvertes = questions.filter((x) => !estChoix(x));
+  const total = Math.min(n, questions.length);
+  // Pas assez de questions ouvertes : les QCM à réponse courte qui se comprennent sans les choix deviennent des questions à écrire.
+  const manque = total - Math.round((total * pctQcm) / 100) - ouvertes.length;
+  if (manque > 0) {
+    const aConvertir = new Set(choix.filter((x) => x.type === "qcm" && !x.garderChoix && x.reponse.length <= 40 && !/lequel|laquelle|lesquel|parmi|suivant|ci-dessous|ci-contre/i.test(x.enonce)).slice(0, manque));
+    ouvertes = [...ouvertes, ...[...aConvertir].map((x) => ({ ...x, type: /^-?\d+([.,]\d+)?$/.test(x.reponse) ? "numerique" : "ouverte", choix: [], explications_choix: [] }))];
+    choix = choix.filter((x) => !aConvertir.has(x));
+  }
+  // Toujours le nombre demandé (dans la limite de la banque) : s'il manque un type, l'autre complète.
+  let nc = Math.round((total * pctQcm) / 100), no = total - nc;
   if (nc > choix.length) { no += nc - choix.length; nc = choix.length; }
   if (no > ouvertes.length) { nc = Math.min(choix.length, nc + no - ouvertes.length); no = ouvertes.length; }
   return melange([...choix.slice(0, nc), ...ouvertes.slice(0, no)]); // ordre toujours différent
