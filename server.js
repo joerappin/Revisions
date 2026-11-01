@@ -14,6 +14,7 @@ import QRCode from "qrcode";
 import { carteDepuisRequete } from "./carto.js";
 import { COSTUMES, svgCostume } from "./costumes.js";
 import { banqueCCQ, estCCQ } from "./ccq-banque.js";
+import { banqueScience, estScience } from "./science-banque.js";
 import { genererTestGeo } from "./geo-banque.js";
 import { demoRevision, demoFinal, demoDico, cleQuestion, estAlgebre } from "./demo.js";
 import { niveauAlgebre } from "./maths-generateur.js";
@@ -535,7 +536,7 @@ Si une partie de la photo est illisible, n'invente rien : base-toi seulement sur
 }
 
 // Leçons intégrées qui suivent un programme officiel : utilisées même avec une clé API.
-const leconIntegree = (matiere, sujet) => estCCQ(matiere) && !!banqueCCQ(sujet);
+const leconIntegree = (matiere, sujet) => (estCCQ(matiere) && !!banqueCCQ(sujet)) || (estScience(matiere) && !!banqueScience(sujet));
 
 // ---------- Routes IA ----------
 async function genererRevision(p, matiere, sujet) {
